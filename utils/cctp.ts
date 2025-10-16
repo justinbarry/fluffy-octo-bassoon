@@ -95,7 +95,10 @@ export async function getAttestationSignature(
   pollInterval: number = 3000
 ): Promise<{ attestation: string; message?: string }> {
   const sourceDomain = NOBLE_CONFIG.CCTP_DOMAIN;
-  const url = `${ATTESTATION_API_URL}/v2/messages/${sourceDomain}?transactionHash=${transactionHash}`;
+  // CCTP v1 endpoint format: /v1/messages/{sourceDomain}/{transactionHash}
+  const url = `${ATTESTATION_API_URL}/v1/messages/${sourceDomain}/${transactionHash}`;
+
+  console.log('🔍 Attestation API URL:', url);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
