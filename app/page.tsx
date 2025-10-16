@@ -115,6 +115,10 @@ export default function Home() {
         const walletAccount = firstWallet.accounts[0];
         const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
 
+        console.log('🔍 Wallet account structure:', walletAccount);
+        console.log('   Address:', walletAccount.address);
+        console.log('   Address type:', typeof walletAccount.address);
+
         // Initialize Xion wallet
         const xionWallet = await TurnkeyDirectWallet.init({
           config: {
