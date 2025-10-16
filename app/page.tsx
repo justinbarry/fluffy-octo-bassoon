@@ -546,8 +546,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* Debug Button */}
-          {xionAddress && (
+          {/* Debug Button - Always visible for troubleshooting */}
+          {httpClient && (
             <div className="mt-4">
               <button
                 onClick={debugWhoAmI}
