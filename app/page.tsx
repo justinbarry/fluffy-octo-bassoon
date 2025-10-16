@@ -58,7 +58,8 @@ export default function Home() {
   // Cosmos clients
   const [xionSigningClient, setXionSigningClient] = useState<SigningStargateClient | null>(null);
   const [nobleSigningClient, setNobleSigningClient] = useState<SigningStargateClient | null>(null);
-  const [queryClient, setQueryClient] = useState<CosmWasmClient | null>(null);
+  const [xionQueryClient, setXionQueryClient] = useState<CosmWasmClient | null>(null);
+  const [nobleQueryClient, setNobleQueryClient] = useState<CosmWasmClient | null>(null);
 
   // Solana client and signer
   const [solanaSigner, setSolanaSigner] = useState<TurnkeySigner | null>(null);
@@ -86,17 +87,22 @@ export default function Home() {
 
   const firstWallet = Array.isArray(wallets) ? wallets[0] : wallets;
 
-  // Initialize Xion query client
+  // Initialize Xion and Noble query clients
   useEffect(() => {
-    const initQueryClient = async () => {
+    const initQueryClients = async () => {
       try {
-        const client = await CosmWasmClient.connect(XION_RPC_URL);
-        setQueryClient(client);
+        const xionClient = await CosmWasmClient.connect(XION_RPC_URL);
+        setXionQueryClient(xionClient);
+
+        const nobleClient = await CosmWasmClient.connect(NOBLE_RPC_URL);
+        setNobleQueryClient(nobleClient);
+
+        console.log('✅ Query clients initialized');
       } catch (error) {
-        console.error('Failed to connect query client:', error);
+        console.error('Failed to connect query clients:', error);
       }
     };
-    initQueryClient();
+    initQueryClients();
   }, []);
 
   // Initialize Xion, Noble, and Solana signing clients
@@ -294,10 +300,10 @@ export default function Home() {
   // Fetch Xion USDC balance
   useEffect(() => {
     const fetchXionBalance = async () => {
-      if (!xionAddress || !queryClient) return;
+      if (!xionAddress || !xionQueryClient) return;
 
       try {
-        const balance = await queryClient.getBalance(xionAddress, USDC_DENOM);
+        const balance = await xionQueryClient.getBalance(xionAddress, USDC_DENOM);
         setXionUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
       } catch (error) {
         console.error('Error fetching Xion balance:', error);
@@ -307,15 +313,15 @@ export default function Home() {
     fetchXionBalance();
     const interval = setInterval(fetchXionBalance, 10000);
     return () => clearInterval(interval);
-  }, [xionAddress, queryClient]);
+  }, [xionAddress, xionQueryClient]);
 
   // Fetch Noble USDC balance
   useEffect(() => {
     const fetchNobleBalance = async () => {
-      if (!nobleAddress || !queryClient) return;
+      if (!nobleAddress || !nobleQueryClient) return;
 
       try {
-        const balance = await queryClient.getBalance(nobleAddress, 'uusdc');
+        const balance = await nobleQueryClient.getBalance(nobleAddress, 'uusdc');
         setNobleUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
       } catch (error) {
         console.error('Error fetching Noble balance:', error);
@@ -325,7 +331,7 @@ export default function Home() {
     fetchNobleBalance();
     const interval = setInterval(fetchNobleBalance, 10000);
     return () => clearInterval(interval);
-  }, [nobleAddress, queryClient]);
+  }, [nobleAddress, nobleQueryClient]);
 
   // Fetch Solana USDC balance
   useEffect(() => {
