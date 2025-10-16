@@ -112,31 +112,41 @@ export default function Home() {
       }
 
       try {
-        const walletAccount = firstWallet.accounts[0];
         const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
 
-        console.log('🔍 Wallet account structure:', walletAccount);
-        console.log('   walletAccountId:', walletAccount.walletAccountId);
-        console.log('   Address:', walletAccount.address);
-        console.log('   Curve:', walletAccount.curve);
+        // Find the secp256k1 wallet for Cosmos (Xion/Noble)
+        console.log('🔍 Searching through all wallets for secp256k1 (Cosmos)...');
+        console.log('   Total wallets:', Array.isArray(wallets) ? wallets.length : 1);
 
-        // Check if this is the correct curve for Cosmos
-        if (walletAccount.curve !== 'CURVE_SECP256K1') {
-          console.warn('⚠️ First wallet has wrong curve:', walletAccount.curve);
-          console.warn('   Expected CURVE_SECP256K1 for Cosmos (Xion/Noble)');
-          console.warn('   This wallet was created before provider config was fixed');
-          console.warn('   Please delete this wallet in Turnkey dashboard and re-authenticate');
-          console.warn('   Or we can find/create the correct secp256k1 wallet');
+        let cosmosWalletAccount = null;
+        const allWallets = Array.isArray(wallets) ? wallets : [wallets];
 
-          // For now, throw error to prevent using wrong wallet
+        for (const wallet of allWallets) {
+          if (!wallet?.accounts) continue;
+
+          for (const account of wallet.accounts) {
+            console.log(`   Checking wallet account: ${account.walletAccountId}`);
+            console.log(`     Curve: ${account.curve}`);
+            console.log(`     Address: ${account.address}`);
+
+            if (account.curve === 'CURVE_SECP256K1') {
+              cosmosWalletAccount = account;
+              console.log('✅ Found secp256k1 wallet for Cosmos!');
+              break;
+            }
+          }
+
+          if (cosmosWalletAccount) break;
+        }
+
+        if (!cosmosWalletAccount) {
           throw new Error(
-            `Wallet has curve ${walletAccount.curve} but Cosmos requires CURVE_SECP256K1. ` +
-            `Please delete the ed25519 wallet in Turnkey dashboard and reconnect to create a new secp256k1 wallet.`
+            'No secp256k1 wallet found. Please re-authenticate to create a Cosmos wallet.'
           );
         }
 
         // Use walletAccountId for signWith, not the blockchain address
-        const signWith = walletAccount.walletAccountId || '';
+        const signWith = cosmosWalletAccount.walletAccountId || '';
 
         // Initialize Xion wallet
         const xionWallet = await TurnkeyDirectWallet.init({
