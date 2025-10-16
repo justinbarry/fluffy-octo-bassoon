@@ -173,29 +173,62 @@ export default function Home() {
         });
         setSolanaSigner(solanaTurnkeySigner);
 
-        // Get or create Solana wallet in organization (sub-org or root)
+        // Get or create Solana wallet (client-side with passkey auth)
         try {
-          // Try to get sub-org ID, fall back to root org ID
-          const subOrgId = extractSubOrgId(user);
-          const orgId = subOrgId || process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
+          console.log('📝 Getting or creating Solana wallet...');
+          console.log('   Organization ID:', organizationId);
 
-          if (!orgId) {
-            console.error('❌ No organization ID available');
-            console.log('User object:', user);
-            throw new Error('Organization ID not found');
+          // First, check if we already have a Solana wallet
+          const walletsResponse = await httpClient.getWallets({
+            organizationId,
+          });
+
+          // Look for existing Solana wallet
+          const wallets = walletsResponse.wallets || [];
+          let solanaWalletAddress = '';
+
+          for (const wallet of wallets) {
+            const accountsResponse = await httpClient.getWalletAccounts({
+              organizationId,
+              walletId: wallet.walletId,
+            });
+
+            const solanaAccount = accountsResponse.accounts?.find(
+              (account: any) => account.addressFormat === 'ADDRESS_FORMAT_SOLANA'
+            );
+
+            if (solanaAccount?.address) {
+              console.log('✅ Found existing Solana wallet');
+              solanaWalletAddress = solanaAccount.address;
+              break;
+            }
           }
 
-          console.log('📝 Getting or creating Solana wallet...');
-          console.log('   Org ID:', orgId);
-          console.log('   Is sub-org:', !!subOrgId);
+          // If no Solana wallet found, create one
+          if (!solanaWalletAddress) {
+            console.log('📝 Creating new Solana wallet...');
 
-          const solAddress = await getOrCreateSolanaWallet(orgId);
+            const createWalletResult = await httpClient.createWallet({
+              organizationId,
+              walletName: 'Solana Wallet',
+              accounts: [
+                {
+                  curve: 'CURVE_ED25519',
+                  pathFormat: 'PATH_FORMAT_BIP32',
+                  path: "m/44'/501'/0'/0'",
+                  addressFormat: 'ADDRESS_FORMAT_SOLANA',
+                },
+              ],
+            });
 
-          setSolanaAddress(solAddress);
-          console.log('✅ Solana account ready:', solAddress);
+            solanaWalletAddress = createWalletResult.addresses?.[0] || '';
+            console.log('✅ Created Solana wallet:', solanaWalletAddress);
+          }
+
+          setSolanaAddress(solanaWalletAddress);
         } catch (error) {
-          console.error('❌ Failed to get/create Solana account:', error);
-          console.warn('⚠️ Continuing without Solana - user can manually create account in Turnkey dashboard');
+          console.error('❌ Failed to get/create Solana wallet:', error);
+          console.warn('⚠️ Continuing without Solana');
           setSolanaAddress('');
         }
 
