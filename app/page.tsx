@@ -428,6 +428,25 @@ export default function Home() {
     setTransferAmount('');
   };
 
+  // Debug: Call Turnkey whoami endpoint
+  const debugWhoAmI = async () => {
+    if (!httpClient) {
+      console.error('❌ httpClient not available');
+      return;
+    }
+
+    try {
+      console.log('🔍 Calling Turnkey whoami endpoint...');
+      const whoami = await httpClient.getWhoami({
+        organizationId: process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '',
+      });
+      console.log('✅ Whoami response:', whoami);
+      console.log('📋 Full object:', JSON.stringify(whoami, null, 2));
+    } catch (error) {
+      console.error('❌ Whoami error:', error);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-8">
       <div className="max-w-4xl mx-auto">
@@ -468,6 +487,18 @@ export default function Home() {
               <div className="text-xs text-gray-600 mt-1">
                 {solanaAddress}
               </div>
+            </div>
+          )}
+
+          {/* Debug Button */}
+          {xionAddress && (
+            <div className="mt-4">
+              <button
+                onClick={debugWhoAmI}
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                🔍 Debug: Call Turnkey whoami (check console)
+              </button>
             </div>
           )}
         </div>
