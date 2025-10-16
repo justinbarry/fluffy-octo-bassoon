@@ -112,7 +112,13 @@ export default function Home() {
       }
 
       try {
-        const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
+        const rootOrgId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
+
+        // Get the actual organization ID (sub-org)
+        const actualOrgId = await getOrganizationId(httpClient, rootOrgId);
+        console.log('🔑 Using organization ID:', actualOrgId);
+        console.log('   Root org:', rootOrgId);
+        console.log('   Is sub-org:', actualOrgId !== rootOrgId);
 
         // Find the secp256k1 wallet for Cosmos (Xion/Noble)
         console.log('🔍 Searching through all wallets for secp256k1 (Cosmos)...');
@@ -148,11 +154,11 @@ export default function Home() {
         // Use walletAccountId for signWith, not the blockchain address
         const signWith = cosmosWalletAccount.walletAccountId || '';
 
-        // Initialize Xion wallet
+        // Initialize Xion wallet with SUB-ORG ID (not root org)
         const xionWallet = await TurnkeyDirectWallet.init({
           config: {
             client: httpClient,
-            organizationId,
+            organizationId: actualOrgId, // ← Use sub-org ID!
             signWith,
           },
           prefix: 'xion',
@@ -174,11 +180,11 @@ export default function Home() {
         );
         setXionSigningClient(xionClient);
 
-        // Initialize Noble wallet
+        // Initialize Noble wallet with SUB-ORG ID (not root org)
         const nobleWallet = await TurnkeyDirectWallet.init({
           config: {
             client: httpClient,
-            organizationId,
+            organizationId: actualOrgId, // ← Use sub-org ID!
             signWith,
           },
           prefix: 'noble',
@@ -199,20 +205,18 @@ export default function Home() {
         );
         setNobleSigningClient(nobleClient);
 
-        // Initialize Solana signer
+        // Initialize Solana signer with SUB-ORG ID
         const solanaTurnkeySigner = new TurnkeySigner({
-          organizationId,
+          organizationId: actualOrgId, // ← Use sub-org ID!
           client: httpClient,
         });
         setSolanaSigner(solanaTurnkeySigner);
 
         // Get or create Solana wallet (client-side with passkey auth)
         try {
-          // Get the actual organization ID (sub-org or root)
-          const actualOrgId = await getOrganizationId(httpClient, organizationId);
 
           console.log('📝 Getting or creating Solana wallet...');
-          console.log('   Root org ID:', organizationId);
+          console.log('   Root org ID:', rootOrgId);
           console.log('   Actual org ID:', actualOrgId);
 
           // First, check if we already have a Solana wallet
