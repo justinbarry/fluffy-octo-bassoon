@@ -30,7 +30,7 @@ import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
 import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
 import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
-import { getOrCreateSolanaAccount, extractWalletId } from '@/utils/turnkeyWallet';
+import { getOrCreateSolanaWallet, extractSubOrgId } from '@/utils/turnkeyWallet';
 
 // USDC denom on Xion
 const USDC_DENOM = process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
@@ -173,27 +173,19 @@ export default function Home() {
         });
         setSolanaSigner(solanaTurnkeySigner);
 
-        // Get or create Solana wallet account
+        // Get or create Solana wallet in sub-org
         try {
-          const walletId = extractWalletId(firstWallet);
-          if (!walletId) {
-            console.warn('⚠️ Could not extract wallet ID from Turnkey wallet');
-            console.log('Wallet structure:', firstWallet);
+          const subOrgId = extractSubOrgId(user);
+          if (!subOrgId) {
+            console.warn('⚠️ Could not extract sub-org ID from Turnkey user');
             console.log('User object:', user);
-            // Try to get wallet ID from the account address field
-            // In some Turnkey setups, the walletId might be stored differently
-            throw new Error('Wallet ID not found. Check Turnkey wallet structure.');
+            throw new Error('Sub-organization ID not found. Check Turnkey user structure.');
           }
 
-          // Get the sub-organization ID from the user object
-          // The sub-org ID should be in user.organizationId for sub-org users
-          const subOrgId = (user as any)?.organizationId;
-          console.log('📝 Getting or creating Solana account...');
+          console.log('📝 Getting or creating Solana wallet in sub-org...');
           console.log('   Sub-org ID:', subOrgId);
-          console.log('   Wallet ID:', walletId);
-          console.log('   User:', user);
 
-          const solAddress = await getOrCreateSolanaAccount(walletId, subOrgId);
+          const solAddress = await getOrCreateSolanaWallet(subOrgId);
 
           setSolanaAddress(solAddress);
           console.log('✅ Solana account ready:', solAddress);

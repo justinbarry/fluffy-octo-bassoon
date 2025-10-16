@@ -4,25 +4,23 @@
  */
 
 /**
- * Get or create a Solana wallet account in Turnkey
+ * Get or create a Solana wallet in Turnkey sub-organization
  *
  * This function calls a server-side API route that:
- * 1. Checks if the wallet already has a Solana account
- * 2. If not, creates one using CREATE_WALLET_ACCOUNTS activity
+ * 1. Checks if the sub-org already has a Solana wallet
+ * 2. If not, creates a new wallet with ed25519 curve for Solana
  * 3. Returns the Solana address
  *
  * Note: Uses server-side API route because wallet queries/creation
  * require API key authentication (not passkey/WebAuthn)
  *
- * @param walletId - Existing wallet ID
- * @param subOrgId - Sub-organization ID (where the wallet lives)
+ * @param subOrgId - Sub-organization ID (where wallets live)
  * @returns Solana address (base58 format)
  */
-export async function getOrCreateSolanaAccount(
-  walletId: string,
-  subOrgId?: string
+export async function getOrCreateSolanaWallet(
+  subOrgId: string
 ): Promise<string> {
-  console.log('🔍 Requesting Solana account from server API...');
+  console.log('🔍 Requesting Solana wallet from server API...');
 
   try {
     const response = await fetch('/api/turnkey/solana-account', {
@@ -30,7 +28,7 @@ export async function getOrCreateSolanaAccount(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ walletId, subOrgId }),
+      body: JSON.stringify({ subOrgId }),
     });
 
     if (!response.ok) {
@@ -48,11 +46,9 @@ export async function getOrCreateSolanaAccount(
 }
 
 /**
- * Get wallet ID from Turnkey wallet accounts
- * In react-wallet-kit, the wallet ID should be available from the wallet object
+ * Extract sub-organization ID from Turnkey user object
  */
-export function extractWalletId(wallet: any): string {
-  // The wallet object from useTurnkey() should have a walletId
-  // This may be in wallet.id, wallet.walletId, or wallet.accounts[0].walletId
-  return wallet?.id || wallet?.walletId || '';
+export function extractSubOrgId(user: any): string | undefined {
+  // The user object from useTurnkey() should have organizationId for sub-org users
+  return user?.organizationId;
 }
