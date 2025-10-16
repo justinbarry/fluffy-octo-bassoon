@@ -46,9 +46,22 @@ export async function getOrCreateSolanaWallet(
 }
 
 /**
- * Extract sub-organization ID from Turnkey user object
+ * Extract organization ID from Turnkey user object
+ * Returns sub-org ID if user is in a sub-org, otherwise undefined
+ * Caller should fall back to root org ID from environment
  */
 export function extractSubOrgId(user: any): string | undefined {
-  // The user object from useTurnkey() should have organizationId for sub-org users
-  return user?.organizationId;
+  // Check various possible locations for organization ID
+  const orgId = user?.organizationId ||
+                user?.organization?.id ||
+                user?.organization?.organizationId;
+
+  console.log('🔍 Extracting org ID from user:', {
+    hasOrganizationId: !!user?.organizationId,
+    hasOrganization: !!user?.organization,
+    userId: user?.userId,
+    extracted: orgId
+  });
+
+  return orgId;
 }

@@ -173,19 +173,23 @@ export default function Home() {
         });
         setSolanaSigner(solanaTurnkeySigner);
 
-        // Get or create Solana wallet in sub-org
+        // Get or create Solana wallet in organization (sub-org or root)
         try {
+          // Try to get sub-org ID, fall back to root org ID
           const subOrgId = extractSubOrgId(user);
-          if (!subOrgId) {
-            console.warn('⚠️ Could not extract sub-org ID from Turnkey user');
+          const orgId = subOrgId || process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
+
+          if (!orgId) {
+            console.error('❌ No organization ID available');
             console.log('User object:', user);
-            throw new Error('Sub-organization ID not found. Check Turnkey user structure.');
+            throw new Error('Organization ID not found');
           }
 
-          console.log('📝 Getting or creating Solana wallet in sub-org...');
-          console.log('   Sub-org ID:', subOrgId);
+          console.log('📝 Getting or creating Solana wallet...');
+          console.log('   Org ID:', orgId);
+          console.log('   Is sub-org:', !!subOrgId);
 
-          const solAddress = await getOrCreateSolanaWallet(subOrgId);
+          const solAddress = await getOrCreateSolanaWallet(orgId);
 
           setSolanaAddress(solAddress);
           console.log('✅ Solana account ready:', solAddress);
