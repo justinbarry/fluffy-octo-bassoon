@@ -601,9 +601,21 @@ export default function Home() {
             {Object.keys(txHashes).length > 0 && (
               <div className="mb-4 p-4 bg-gray-50 rounded-lg text-sm">
                 <div className="font-medium mb-2">Transaction Hashes:</div>
-                {txHashes.ibcTransfer && <div className="mb-1">IBC: {txHashes.ibcTransfer.slice(0, 16)}...</div>}
-                {txHashes.nobleBurn && <div className="mb-1">Burn: {txHashes.nobleBurn.slice(0, 16)}...</div>}
-                {txHashes.solanaMint && <div>Mint: {txHashes.solanaMint.slice(0, 16)}...</div>}
+                {txHashes.ibcTransfer && (
+                  <div className="mb-1 break-all">
+                    <span className="font-medium">IBC:</span> {txHashes.ibcTransfer}
+                  </div>
+                )}
+                {txHashes.nobleBurn && (
+                  <div className="mb-1 break-all">
+                    <span className="font-medium">Burn:</span> {txHashes.nobleBurn}
+                  </div>
+                )}
+                {txHashes.solanaMint && (
+                  <div className="break-all">
+                    <span className="font-medium">Mint:</span> {txHashes.solanaMint}
+                  </div>
+                )}
               </div>
             )}
 
