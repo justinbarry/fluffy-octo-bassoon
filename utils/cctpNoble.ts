@@ -47,6 +47,9 @@ export async function burnUSDCOnNoble(
       destinationDomain,
       mintRecipient: Buffer.from(mintRecipient.replace('0x', ''), 'hex'),
       burnToken: NOBLE_CONFIG.USDC_DENOM,
+      // Set destinationCaller to bytes32(0) to allow ANY relayer to transmit
+      // This enables the user's frontend to call receiveMessage on Solana
+      destinationCaller: new Uint8Array(32), // 32 zero bytes = bytes32(0)
     }),
   };
 
