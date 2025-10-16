@@ -15,10 +15,12 @@
  * require API key authentication (not passkey/WebAuthn)
  *
  * @param walletId - Existing wallet ID
+ * @param subOrgId - Sub-organization ID (where the wallet lives)
  * @returns Solana address (base58 format)
  */
 export async function getOrCreateSolanaAccount(
-  walletId: string
+  walletId: string,
+  subOrgId?: string
 ): Promise<string> {
   console.log('🔍 Requesting Solana account from server API...');
 
@@ -28,7 +30,7 @@ export async function getOrCreateSolanaAccount(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ walletId }),
+      body: JSON.stringify({ walletId, subOrgId }),
     });
 
     if (!response.ok) {

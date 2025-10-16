@@ -5,15 +5,20 @@ const SOLANA_DERIVATION_PATH = "m/44'/501'/0'/0'";
 
 export async function POST(request: NextRequest) {
   try {
-    const { walletId } = await request.json();
+    const { walletId, subOrgId } = await request.json();
 
     if (!walletId) {
       return NextResponse.json({ error: 'walletId is required' }, { status: 400 });
     }
 
-    const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || process.env.TURNKEY_ORGANIZATION_ID;
+    // Use sub-org ID if provided (for wallets in sub-organizations)
+    // Otherwise fall back to root org ID
+    const organizationId = subOrgId || process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || process.env.TURNKEY_ORGANIZATION_ID;
     const apiPublicKey = process.env.TURNKEY_API_PUBLIC_KEY;
     const apiPrivateKey = process.env.TURNKEY_API_PRIVATE_KEY;
+
+    console.log('🔧 Using organization ID:', organizationId);
+    console.log('   Is sub-org:', !!subOrgId);
 
     if (!organizationId || !apiPublicKey || !apiPrivateKey) {
       return NextResponse.json(
@@ -49,32 +54,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ address: solanaAccount.address });
     }
 
-    // No Solana account found, create one
-    console.log('📝 Creating new Solana wallet account...');
+    // No Solana account found
+    console.log('⚠️ No Solana account found in wallet');
+    console.log('📝 To create a Solana account, use the Turnkey dashboard or CLI:');
+    console.log('   - Curve: CURVE_ED25519');
+    console.log('   - Path: m/44\'/501\'/0\'/0\'');
+    console.log('   - Address Format: ADDRESS_FORMAT_SOLANA');
 
-    const createAccountResult = await turnkeyClient.apiClient().createWalletAccounts({
-      organizationId,
-      walletId,
-      accounts: [
-        {
+    return NextResponse.json(
+      {
+        error: 'No Solana account found in wallet',
+        message: 'Please create a Solana wallet account in Turnkey dashboard first',
+        instructions: {
           curve: 'CURVE_ED25519',
-          pathFormat: 'PATH_FORMAT_BIP32',
           path: SOLANA_DERIVATION_PATH,
-          addressFormat: 'ADDRESS_FORMAT_SOLANA',
-        },
-      ],
-    });
-
-    const newAddress = createAccountResult.addresses?.[0];
-    if (!newAddress) {
-      return NextResponse.json(
-        { error: 'Failed to create Solana wallet account' },
-        { status: 500 }
-      );
-    }
-
-    console.log('✅ Created new Solana account:', newAddress);
-    return NextResponse.json({ address: newAddress });
+          addressFormat: 'ADDRESS_FORMAT_SOLANA'
+        }
+      },
+      { status: 404 }
+    );
 
   } catch (error: any) {
     console.error('❌ Error in Solana account creation:', error);

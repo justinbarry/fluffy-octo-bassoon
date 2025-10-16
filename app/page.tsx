@@ -179,13 +179,21 @@ export default function Home() {
           if (!walletId) {
             console.warn('⚠️ Could not extract wallet ID from Turnkey wallet');
             console.log('Wallet structure:', firstWallet);
+            console.log('User object:', user);
             // Try to get wallet ID from the account address field
             // In some Turnkey setups, the walletId might be stored differently
             throw new Error('Wallet ID not found. Check Turnkey wallet structure.');
           }
 
-          console.log('📝 Getting or creating Solana account for wallet:', walletId);
-          const solAddress = await getOrCreateSolanaAccount(walletId);
+          // Get the sub-organization ID from the user object
+          // The sub-org ID should be in user.organizationId for sub-org users
+          const subOrgId = (user as any)?.organizationId;
+          console.log('📝 Getting or creating Solana account...');
+          console.log('   Sub-org ID:', subOrgId);
+          console.log('   Wallet ID:', walletId);
+          console.log('   User:', user);
+
+          const solAddress = await getOrCreateSolanaAccount(walletId, subOrgId);
 
           setSolanaAddress(solAddress);
           console.log('✅ Solana account ready:', solAddress);
