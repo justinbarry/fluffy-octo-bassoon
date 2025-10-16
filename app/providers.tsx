@@ -11,12 +11,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     // Enable authentication methods
     auth: {
-      // Create wallets for new users by default
+      // Create secp256k1 wallet for Cosmos chains (Xion, Noble)
+      // Solana wallet (ed25519) will be created programmatically after login
       createSuborgParams: {
         emailOtpAuth: {
           userName: 'XION User',
           customWallet: {
-            walletName: 'XION Wallet',
+            walletName: 'Cosmos Wallet',
             walletAccounts: [
               {
                 curve: 'CURVE_SECP256K1',
@@ -30,7 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         passkeyAuth: {
           userName: 'XION User',
           customWallet: {
-            walletName: 'XION Wallet',
+            walletName: 'Cosmos Wallet',
             walletAccounts: [
               {
                 curve: 'CURVE_SECP256K1',

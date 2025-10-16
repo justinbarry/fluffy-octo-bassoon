@@ -120,8 +120,23 @@ export default function Home() {
         console.log('   Address:', walletAccount.address);
         console.log('   Curve:', walletAccount.curve);
 
+        // Check if this is the correct curve for Cosmos
+        if (walletAccount.curve !== 'CURVE_SECP256K1') {
+          console.warn('⚠️ First wallet has wrong curve:', walletAccount.curve);
+          console.warn('   Expected CURVE_SECP256K1 for Cosmos (Xion/Noble)');
+          console.warn('   This wallet was created before provider config was fixed');
+          console.warn('   Please delete this wallet in Turnkey dashboard and re-authenticate');
+          console.warn('   Or we can find/create the correct secp256k1 wallet');
+
+          // For now, throw error to prevent using wrong wallet
+          throw new Error(
+            `Wallet has curve ${walletAccount.curve} but Cosmos requires CURVE_SECP256K1. ` +
+            `Please delete the ed25519 wallet in Turnkey dashboard and reconnect to create a new secp256k1 wallet.`
+          );
+        }
+
         // Use walletAccountId for signWith, not the blockchain address
-        const signWith = walletAccount.walletAccountId || walletAccount.address || '';
+        const signWith = walletAccount.walletAccountId || '';
 
         // Initialize Xion wallet
         const xionWallet = await TurnkeyDirectWallet.init({
