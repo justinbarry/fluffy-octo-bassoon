@@ -116,15 +116,19 @@ export default function Home() {
         const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
 
         console.log('🔍 Wallet account structure:', walletAccount);
+        console.log('   walletAccountId:', walletAccount.walletAccountId);
         console.log('   Address:', walletAccount.address);
-        console.log('   Address type:', typeof walletAccount.address);
+        console.log('   Curve:', walletAccount.curve);
+
+        // Use walletAccountId for signWith, not the blockchain address
+        const signWith = walletAccount.walletAccountId || walletAccount.address || '';
 
         // Initialize Xion wallet
         const xionWallet = await TurnkeyDirectWallet.init({
           config: {
             client: httpClient,
             organizationId,
-            signWith: walletAccount.address || '',
+            signWith,
           },
           prefix: 'xion',
         });
@@ -150,7 +154,7 @@ export default function Home() {
           config: {
             client: httpClient,
             organizationId,
-            signWith: walletAccount.address || '',
+            signWith,
           },
           prefix: 'noble',
         });
