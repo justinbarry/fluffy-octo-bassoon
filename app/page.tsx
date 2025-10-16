@@ -30,6 +30,7 @@ import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
 import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
 import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
+import { getOrCreateSolanaAccount, extractWalletId } from '@/utils/turnkeyWallet';
 
 // USDC denom on Xion
 const USDC_DENOM = process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
@@ -172,20 +173,31 @@ export default function Home() {
         });
         setSolanaSigner(solanaTurnkeySigner);
 
-        // Derive Solana address from the wallet account
-        // The Turnkey wallet account should have a Solana address
-        // For now, we'll check if there's a solana address field, or derive it
-        const solAddr = walletAccount.address || ''; // This might be Cosmos format
+        // Get or create Solana wallet account
+        try {
+          const walletId = extractWalletId(firstWallet);
+          if (!walletId) {
+            console.warn('⚠️ Could not extract wallet ID from Turnkey wallet');
+            console.log('Wallet structure:', firstWallet);
+            // Try to get wallet ID from the account address field
+            // In some Turnkey setups, the walletId might be stored differently
+            throw new Error('Wallet ID not found. Check Turnkey wallet structure.');
+          }
 
-        // Try to get the actual Solana address from the wallet
-        // If the wallet has Solana support, it should provide it
-        // Otherwise we need to query Turnkey API for the Solana address
-        console.log('Wallet account:', walletAccount);
-        console.log('Wallet account address:', walletAccount.address);
+          console.log('📝 Getting or creating Solana account for wallet:', walletId);
+          const solAddress = await getOrCreateSolanaAccount(
+            httpClient,
+            organizationId,
+            walletId
+          );
 
-        // For now, set a placeholder - we'll need to properly derive or fetch this
-        // In production, query the Turnkey API for the Solana address associated with this wallet
-        setSolanaAddress(''); // Will be populated when we properly integrate Turnkey API
+          setSolanaAddress(solAddress);
+          console.log('✅ Solana account ready:', solAddress);
+        } catch (error) {
+          console.error('❌ Failed to get/create Solana account:', error);
+          console.warn('⚠️ Continuing without Solana - user can manually create account in Turnkey dashboard');
+          setSolanaAddress('');
+        }
 
         console.log('✅ All signing clients initialized');
       } catch (error) {
