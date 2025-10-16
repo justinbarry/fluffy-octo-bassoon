@@ -46,22 +46,28 @@ export async function getOrCreateSolanaWallet(
 }
 
 /**
- * Extract organization ID from Turnkey user object
- * Returns sub-org ID if user is in a sub-org, otherwise undefined
- * Caller should fall back to root org ID from environment
+ * Get organization ID from httpClient using whoami
+ * This is more reliable than trying to extract from user object
  */
-export function extractSubOrgId(user: any): string | undefined {
-  // Check various possible locations for organization ID
-  const orgId = user?.organizationId ||
-                user?.organization?.id ||
-                user?.organization?.organizationId;
+export async function getOrganizationId(
+  httpClient: any,
+  rootOrgId: string
+): Promise<string> {
+  try {
+    const whoami = await httpClient.getWhoami({
+      organizationId: rootOrgId,
+    });
 
-  console.log('🔍 Extracting org ID from user:', {
-    hasOrganizationId: !!user?.organizationId,
-    hasOrganization: !!user?.organization,
-    userId: user?.userId,
-    extracted: orgId
-  });
+    // whoami returns the actual org ID the user belongs to (sub-org or root)
+    const orgId = whoami.organizationId;
+    console.log('🔑 Organization ID from whoami:', orgId);
+    console.log('   Organization name:', whoami.organizationName);
+    console.log('   Is sub-org:', orgId !== rootOrgId);
 
-  return orgId;
+    return orgId;
+  } catch (error) {
+    console.error('❌ Failed to get organization ID:', error);
+    // Fall back to root org ID
+    return rootOrgId;
+  }
 }

@@ -30,7 +30,7 @@ import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
 import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
 import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
-import { getOrCreateSolanaWallet, extractSubOrgId } from '@/utils/turnkeyWallet';
+import { getOrganizationId } from '@/utils/turnkeyWallet';
 
 // USDC denom on Xion
 const USDC_DENOM = process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
@@ -175,12 +175,16 @@ export default function Home() {
 
         // Get or create Solana wallet (client-side with passkey auth)
         try {
+          // Get the actual organization ID (sub-org or root)
+          const actualOrgId = await getOrganizationId(httpClient, organizationId);
+
           console.log('📝 Getting or creating Solana wallet...');
-          console.log('   Organization ID:', organizationId);
+          console.log('   Root org ID:', organizationId);
+          console.log('   Actual org ID:', actualOrgId);
 
           // First, check if we already have a Solana wallet
           const walletsResponse = await httpClient.getWallets({
-            organizationId,
+            organizationId: actualOrgId,
           });
 
           // Look for existing Solana wallet
@@ -189,7 +193,7 @@ export default function Home() {
 
           for (const wallet of wallets) {
             const accountsResponse = await httpClient.getWalletAccounts({
-              organizationId,
+              organizationId: actualOrgId,
               walletId: wallet.walletId,
             });
 
@@ -209,7 +213,7 @@ export default function Home() {
             console.log('📝 Creating new Solana wallet...');
 
             const createWalletResult = await httpClient.createWallet({
-              organizationId,
+              organizationId: actualOrgId,
               walletName: 'Solana Wallet',
               accounts: [
                 {
@@ -442,6 +446,9 @@ export default function Home() {
       });
       console.log('✅ Whoami response:', whoami);
       console.log('📋 Full object:', JSON.stringify(whoami, null, 2));
+      console.log('🔑 Organization ID from whoami:', whoami.organizationId);
+      console.log('👤 User object from useTurnkey:', user);
+      console.log('🔑 Organization ID from user:', (user as any)?.organizationId);
     } catch (error) {
       console.error('❌ Whoami error:', error);
     }
