@@ -19,12 +19,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
           customWallet: {
             walletName: 'Cosmos Wallet',
             walletAccounts: [
-              {
-                curve: 'CURVE_SECP256K1',
-                pathFormat: 'PATH_FORMAT_BIP32',
-                path: "m/44'/118'/0'/0/0",
-                addressFormat: 'ADDRESS_FORMAT_COSMOS',
-              },
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/118'/0'/0/0",
+                    addressFormat: "ADDRESS_FORMAT_UNCOMPRESSED",
+                },
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/118'/0'/0/0", // Cosmos derivation path
+                    addressFormat: "ADDRESS_FORMAT_COSMOS",
+                },
+                {
+                    curve: "CURVE_ED25519",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/501'/0'/0'", // Cosmos derivation path
+                    addressFormat: "ADDRESS_FORMAT_SOLANA",
+                }
             ],
           },
         },
@@ -33,12 +45,24 @@ export function Providers({ children }: { children: React.ReactNode }) {
           customWallet: {
             walletName: 'Cosmos Wallet',
             walletAccounts: [
-              {
-                curve: 'CURVE_SECP256K1',
-                pathFormat: 'PATH_FORMAT_BIP32',
-                path: "m/44'/118'/0'/0/0",
-                addressFormat: 'ADDRESS_FORMAT_COSMOS',
-              },
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/118'/0'/0/0",
+                    addressFormat: "ADDRESS_FORMAT_UNCOMPRESSED",
+                },
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/118'/0'/0/0", // Cosmos derivation path
+                    addressFormat: "ADDRESS_FORMAT_COSMOS",
+                },
+                {
+                    curve: "CURVE_ED25519",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/501'/0'/0'", // Cosmos derivation path
+                    addressFormat: "ADDRESS_FORMAT_SOLANA",
+                }
             ],
           },
         },

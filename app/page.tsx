@@ -546,17 +546,16 @@ export default function Home() {
             </div>
           )}
 
-          {/* Debug Button - Always visible for troubleshooting */}
-          {httpClient && (
-            <div className="mt-4">
-              <button
-                onClick={debugWhoAmI}
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-              >
-                🔍 Debug: Call Turnkey whoami (check console)
-              </button>
-            </div>
-          )}
+          {/* Debug Button - Always visible */}
+          <div className="mt-4">
+            <button
+              onClick={debugWhoAmI}
+              disabled={!httpClient}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              🔍 Debug: Call Turnkey whoami (check console)
+            </button>
+          </div>
         </div>
 
         {/* Balances */}
