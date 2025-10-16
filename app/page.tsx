@@ -578,10 +578,26 @@ export default function Home() {
       const solanaPublicKey = new PublicKey(solanaAddress);
       const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
 
+      // Calculate amount to burn (subtract gas fee: 0.025 USDC = 25,000 uusdc)
+      const balanceInMicroUnits = parseFloat(nobleUsdcBalance) * 1000000;
+      const gasFee = 25000; // 0.025 USDC
+      const burnAmount = Math.floor(balanceInMicroUnits - gasFee);
+
+      if (burnAmount <= 0) {
+        throw new Error('Insufficient balance. Need at least 0.025 USDC for gas fees.');
+      }
+
+      console.log('💰 Burn calculation:', {
+        balance: balanceInMicroUnits,
+        gasFee,
+        burnAmount,
+        burnUSDC: (burnAmount / 1000000).toFixed(6)
+      });
+
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient,
         nobleAddress,
-        `${parseFloat(nobleUsdcBalance) * 1000000}`,
+        burnAmount.toString(),
         SOLANA_CONFIG.CCTP_DOMAIN,
         solanaAddressBytes
       );
