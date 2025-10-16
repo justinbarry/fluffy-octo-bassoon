@@ -39,6 +39,9 @@ export async function burnUSDCOnNoble(
 
   // Noble CCTP module message type
   // Reference: https://github.com/circlefin/noble-cctp
+  // Note: Using MsgDepositForBurn (not MsgDepositForBurnWithCaller)
+  // This message type allows ANY relayer to call receiveMessage on destination
+  // which enables permissionless relaying from the user's frontend
   const burnMsg: EncodeObject = {
     typeUrl: MsgDepositForBurn.typeUrl,
     value: MsgDepositForBurn.fromPartial({
@@ -47,9 +50,7 @@ export async function burnUSDCOnNoble(
       destinationDomain,
       mintRecipient: Buffer.from(mintRecipient.replace('0x', ''), 'hex'),
       burnToken: NOBLE_CONFIG.USDC_DENOM,
-      // Set destinationCaller to bytes32(0) to allow ANY relayer to transmit
-      // This enables the user's frontend to call receiveMessage on Solana
-      destinationCaller: new Uint8Array(32), // 32 zero bytes = bytes32(0)
+      // No destinationCaller field = allows ANY address to relay (permissionless)
     }),
   };
 

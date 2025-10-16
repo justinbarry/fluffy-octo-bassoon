@@ -6,7 +6,6 @@ export interface MsgDepositForBurn {
   destinationDomain: number;
   mintRecipient: Uint8Array;
   burnToken: string;
-  destinationCaller: Uint8Array;
 }
 
 function createBaseMsgDepositForBurn(): MsgDepositForBurn {
@@ -16,7 +15,6 @@ function createBaseMsgDepositForBurn(): MsgDepositForBurn {
     destinationDomain: 0,
     mintRecipient: new Uint8Array(0),
     burnToken: '',
-    destinationCaller: new Uint8Array(0),
   };
 }
 
@@ -37,9 +35,6 @@ export const MsgDepositForBurn = {
     }
     if (message.burnToken !== '') {
       writer.uint32(42).string(message.burnToken);
-    }
-    if (message.destinationCaller.length !== 0) {
-      writer.uint32(50).bytes(message.destinationCaller);
     }
     return writer;
   },
@@ -65,9 +60,6 @@ export const MsgDepositForBurn = {
         case 5:
           message.burnToken = reader.string();
           break;
-        case 6:
-          message.destinationCaller = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -82,7 +74,6 @@ export const MsgDepositForBurn = {
     message.destinationDomain = object.destinationDomain ?? 0;
     message.mintRecipient = object.mintRecipient ?? new Uint8Array(0);
     message.burnToken = object.burnToken ?? '';
-    message.destinationCaller = object.destinationCaller ?? new Uint8Array(0);
     return message;
   },
 };
