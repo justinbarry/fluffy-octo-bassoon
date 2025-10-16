@@ -467,10 +467,22 @@ export default function Home() {
               Cosmos Chains (Xion/Noble)
             </label>
             <button
-              onClick={() => authState !== AuthState.Authenticated && handleLogin()}
+              onClick={() => {
+                console.log('🔘 Connect button clicked');
+                console.log('   Auth state:', authState);
+                console.log('   Is authenticated:', authState === AuthState.Authenticated);
+                console.log('   handleLogin type:', typeof handleLogin);
+
+                if (authState !== AuthState.Authenticated) {
+                  console.log('🚀 Calling handleLogin()...');
+                  handleLogin();
+                } else {
+                  console.log('ℹ️ Already authenticated');
+                }
+              }}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
             >
-              {xionAddress ? `Connected: ${xionAddress.slice(0, 12)}...` : 'Connect Turnkey'}
+              {xionAddress ? `Connected: ${xionAddress.slice(0, 12)}...` : authState === AuthState.Authenticating ? 'Connecting...' : 'Connect Turnkey'}
             </button>
             {xionAddress && (
               <div className="mt-2 text-sm text-gray-600">
