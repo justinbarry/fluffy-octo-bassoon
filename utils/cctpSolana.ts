@@ -22,32 +22,32 @@ import { SOLANA_CONFIG, SOLANA_USDC_MINT, SOLANA_CCTP_CONTRACTS } from '@/config
 import { CCTPMintResult } from '@/types/cctp';
 
 /**
- * Mint USDC on Solana using CCTP
+ * Mint USDC on Solana using CCTP with Turnkey signer
  *
  * This function calls the receiveMessage instruction on the Solana CCTP MessageTransmitter program
  * with the message bytes from Noble burn and the attestation signature from Circle's API
  *
  * @param connection - Solana connection object
- * @param wallet - Solana wallet adapter wallet
+ * @param signer - Turnkey Solana signer
+ * @param solanaAddress - Solana wallet address (base58)
  * @param messageBytes - Message bytes from Noble burn transaction (as hex string with 0x prefix)
  * @param attestation - Attestation signature from Circle's Iris API (as hex string with 0x prefix)
  * @returns Mint transaction result
  */
-export async function mintUSDCOnSolana(
+export async function mintUSDCOnSolanaWithTurnkey(
   connection: Connection,
-  wallet: WalletContextState,
+  signer: any, // TurkeySigner type
+  solanaAddress: string,
   messageBytes: string,
   attestation: string
 ): Promise<CCTPMintResult> {
-  if (!wallet.publicKey || !wallet.signTransaction) {
-    throw new Error('Wallet not connected');
-  }
-
-  console.log('💰 Initiating CCTP mint on Solana:', {
-    wallet: wallet.publicKey.toBase58(),
+  console.log('💰 Initiating CCTP mint on Solana with Turnkey:', {
+    wallet: solanaAddress,
     messageLength: messageBytes.length,
     attestationLength: attestation.length
   });
+
+  const walletPublicKey = new PublicKey(solanaAddress);
 
   try {
     // Convert hex strings to Buffer (remove 0x prefix if present)
@@ -64,7 +64,7 @@ export async function mintUSDCOnSolana(
     const usdcMint = new PublicKey(SOLANA_USDC_MINT);
     const recipientTokenAccount = await getAssociatedTokenAddress(
       usdcMint,
-      wallet.publicKey
+      walletPublicKey
     );
 
     // Check if token account exists, create if not
@@ -74,9 +74,9 @@ export async function mintUSDCOnSolana(
     if (!accountInfo) {
       console.log('📝 Creating associated token account for USDC...');
       const createATAInstruction = createAssociatedTokenAccountInstruction(
-        wallet.publicKey, // payer
+        walletPublicKey, // payer
         recipientTokenAccount, // ata
-        wallet.publicKey, // owner
+        walletPublicKey, // owner
         usdcMint // mint
       );
       transaction.add(createATAInstruction);
@@ -100,7 +100,7 @@ export async function mintUSDCOnSolana(
       messageTransmitterProgram,
       messageBytesBuffer,
       attestationBuffer,
-      wallet.publicKey,
+      walletPublicKey,
       recipientTokenAccount,
       usdcMint
     );
@@ -110,12 +110,12 @@ export async function mintUSDCOnSolana(
     // Get recent blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
-    transaction.feePayer = wallet.publicKey;
+    transaction.feePayer = walletPublicKey;
 
-    // Sign and send transaction
+    // Sign and send transaction with Turnkey
     console.log('📤 Sending CCTP mint transaction to Solana...');
-    const signed = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signed.serialize(), {
+    const signedTransaction = await signer.signTransaction(transaction, solanaAddress);
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
       skipPreflight: false,
       preflightCommitment: 'confirmed' as Commitment,
     });

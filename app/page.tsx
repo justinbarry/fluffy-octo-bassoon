@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTurnkey, AuthState } from '@turnkey/react-wallet-kit';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { SigningStargateClient, GasPrice, defaultRegistryTypes } from '@cosmjs/stargate';
@@ -11,22 +9,26 @@ import { Registry } from '@cosmjs/proto-signing';
 import { fromBech32, toBech32 } from '@cosmjs/encoding';
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { TurnkeyDirectWallet } from '@turnkey/cosmjs';
+import { TurnkeySigner } from '@turnkey/solana';
 import { CoinflowWithdraw } from '@coinflowlabs/react';
+import { Buffer } from 'buffer';
 
 import {
   XION_RPC_URL,
   XION_REST_URL,
   NOBLE_RPC_URL,
+  SOLANA_RPC_URL,
   COINFLOW_API,
   COINFLOW_MERCHANT_ID,
   COINFLOW_BASE_URL,
   NOBLE_CONFIG,
   SOLANA_CONFIG,
 } from '@/config/api';
+import { convertXionToNoble } from '@/utils/addressConversion';
 
 import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
-import { mintUSDCOnSolana, getSolanaUSDCBalance } from '@/utils/cctpSolana';
+import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
 import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
 
 // USDC denom on Xion
@@ -52,18 +54,19 @@ export default function Home() {
     httpClient
   } = useTurnkey();
 
-  // Solana wallet state
-  const solanaWallet = useWallet();
-  const { connection: solanaConnection } = useConnection();
-
   // Cosmos clients
   const [xionSigningClient, setXionSigningClient] = useState<SigningStargateClient | null>(null);
   const [nobleSigningClient, setNobleSigningClient] = useState<SigningStargateClient | null>(null);
   const [queryClient, setQueryClient] = useState<CosmWasmClient | null>(null);
 
+  // Solana client and signer
+  const [solanaSigner, setSolanaSigner] = useState<TurnkeySigner | null>(null);
+  const [solanaConnection] = useState<Connection>(() => new Connection(SOLANA_RPC_URL, 'confirmed'));
+
   // Account state
   const [xionAddress, setXionAddress] = useState<string>('');
   const [nobleAddress, setNobleAddress] = useState<string>('');
+  const [solanaAddress, setSolanaAddress] = useState<string>('');
 
   // Balance state
   const [xionUsdcBalance, setXionUsdcBalance] = useState<string>('0');
@@ -94,25 +97,28 @@ export default function Home() {
     initQueryClient();
   }, []);
 
-  // Initialize Xion and Noble signing clients
+  // Initialize Xion, Noble, and Solana signing clients
   useEffect(() => {
     const initSigningClients = async () => {
       if (!httpClient || !firstWallet?.accounts?.[0]) {
         setXionSigningClient(null);
         setNobleSigningClient(null);
+        setSolanaSigner(null);
         setXionAddress('');
         setNobleAddress('');
+        setSolanaAddress('');
         return;
       }
 
       try {
         const walletAccount = firstWallet.accounts[0];
+        const organizationId = process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '';
 
         // Initialize Xion wallet
         const xionWallet = await TurnkeyDirectWallet.init({
           config: {
             client: httpClient,
-            organizationId: process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '',
+            organizationId,
             signWith: walletAccount.address || '',
           },
           prefix: 'xion',
@@ -123,8 +129,7 @@ export default function Home() {
         if (xionAddr) {
           setXionAddress(xionAddr);
           // Convert to Noble address
-          const { data } = fromBech32(xionAddr);
-          setNobleAddress(toBech32('noble', data));
+          setNobleAddress(convertXionToNoble(xionAddr));
         }
 
         // Connect Xion client
@@ -139,7 +144,7 @@ export default function Home() {
         const nobleWallet = await TurnkeyDirectWallet.init({
           config: {
             client: httpClient,
-            organizationId: process.env.NEXT_PUBLIC_TURNKEY_ORG_ID || '',
+            organizationId,
             signWith: walletAccount.address || '',
           },
           prefix: 'noble',
@@ -160,11 +165,34 @@ export default function Home() {
         );
         setNobleSigningClient(nobleClient);
 
-        console.log('✅ Cosmos signing clients initialized');
+        // Initialize Solana signer
+        const solanaTurnkeySigner = new TurnkeySigner({
+          organizationId,
+          client: httpClient,
+        });
+        setSolanaSigner(solanaTurnkeySigner);
+
+        // Derive Solana address from the wallet account
+        // The Turnkey wallet account should have a Solana address
+        // For now, we'll check if there's a solana address field, or derive it
+        const solAddr = walletAccount.address || ''; // This might be Cosmos format
+
+        // Try to get the actual Solana address from the wallet
+        // If the wallet has Solana support, it should provide it
+        // Otherwise we need to query Turnkey API for the Solana address
+        console.log('Wallet account:', walletAccount);
+        console.log('Wallet account address:', walletAccount.address);
+
+        // For now, set a placeholder - we'll need to properly derive or fetch this
+        // In production, query the Turnkey API for the Solana address associated with this wallet
+        setSolanaAddress(''); // Will be populated when we properly integrate Turnkey API
+
+        console.log('✅ All signing clients initialized');
       } catch (error) {
         console.error('Failed to initialize signing clients:', error);
         setXionSigningClient(null);
         setNobleSigningClient(null);
+        setSolanaSigner(null);
       }
     };
 
@@ -192,10 +220,11 @@ export default function Home() {
   // Fetch Solana USDC balance
   useEffect(() => {
     const fetchSolanaBalance = async () => {
-      if (!solanaWallet.publicKey || !solanaConnection) return;
+      if (!solanaAddress) return;
 
       try {
-        const balance = await getSolanaUSDCBalance(solanaConnection, solanaWallet.publicKey);
+        const publicKey = new PublicKey(solanaAddress);
+        const balance = await getSolanaUSDCBalance(solanaConnection, publicKey);
         setSolanaUsdcBalance(balance);
       } catch (error) {
         console.error('Error fetching Solana balance:', error);
@@ -205,12 +234,12 @@ export default function Home() {
     fetchSolanaBalance();
     const interval = setInterval(fetchSolanaBalance, 10000);
     return () => clearInterval(interval);
-  }, [solanaWallet.publicKey, solanaConnection]);
+  }, [solanaAddress, solanaConnection]);
 
   // CCTP Transfer Handler
   const handleCCTPTransfer = async () => {
-    if (!xionAddress || !nobleAddress || !solanaWallet.publicKey) {
-      setError('Please connect both Turnkey and Solana wallets');
+    if (!xionAddress || !nobleAddress || !solanaAddress) {
+      setError('Please connect Turnkey wallet (Xion, Noble, and Solana addresses required)');
       return;
     }
 
@@ -239,12 +268,16 @@ export default function Home() {
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
+      // Convert Solana address (base58) to bytes for CCTP
+      const solanaPublicKey = new PublicKey(solanaAddress);
+      const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
+
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient!,
         nobleAddress,
         formatUSDCAmount(transferAmount),
         SOLANA_CONFIG.CCTP_DOMAIN, // Domain 5 for Solana
-        '0x' + solanaWallet.publicKey.toBuffer().toString('hex')
+        solanaAddressBytes
       );
       setTxHashes(prev => ({ ...prev, nobleBurn: burnResult.transactionHash }));
 
@@ -269,9 +302,14 @@ export default function Home() {
       setCctpStep('mint');
       setStatusMessage('Minting USDC on Solana...');
 
-      const mintResult = await mintUSDCOnSolana(
+      if (!solanaSigner) {
+        throw new Error('Solana signer not initialized');
+      }
+
+      const mintResult = await mintUSDCOnSolanaWithTurnkey(
         solanaConnection,
-        solanaWallet,
+        solanaSigner,
+        solanaAddress,
         messageHex,
         attestationHex
       );
@@ -378,17 +416,19 @@ export default function Home() {
             )}
           </div>
 
-          {/* Solana */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Solana
-            </label>
-            <WalletMultiButton className="w-full" />
-          </div>
+          {/* Solana - derived from Turnkey */}
+          {solanaAddress && (
+            <div className="mt-4 p-3 bg-purple-50 rounded-lg">
+              <div className="text-sm font-medium text-gray-700">Solana (Turnkey)</div>
+              <div className="text-xs text-gray-600 mt-1">
+                {solanaAddress}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Balances */}
-        {(xionAddress || solanaWallet.publicKey) && (
+        {(xionAddress || solanaAddress) && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-2xl font-semibold mb-4">Balances</h2>
             <div className="grid grid-cols-2 gap-4">
@@ -398,7 +438,7 @@ export default function Home() {
                   <div className="text-2xl font-bold">${xionUsdcBalance}</div>
                 </div>
               )}
-              {solanaWallet.publicKey && (
+              {solanaAddress && (
                 <div className="p-4 bg-purple-50 rounded-lg">
                   <div className="text-sm text-gray-600">Solana USDC</div>
                   <div className="text-2xl font-bold">${solanaUsdcBalance.toFixed(2)}</div>
@@ -476,7 +516,7 @@ export default function Home() {
             <div className="flex gap-4">
               <button
                 onClick={handleCCTPTransfer}
-                disabled={loading || cctpStep !== 'idle' || !xionAddress || !solanaWallet.publicKey}
+                disabled={loading || cctpStep !== 'idle' || !xionAddress || !solanaAddress}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
               >
                 {loading ? 'Processing...' : 'Start CCTP Transfer'}
@@ -494,12 +534,23 @@ export default function Home() {
         )}
 
         {/* Coinflow Withdrawal Widget */}
-        {cctpStep === 'complete' && solanaWallet.publicKey && solanaWallet.connected && (
+        {cctpStep === 'complete' && solanaAddress && solanaSigner && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-2xl font-semibold mb-4">Withdraw to Bank Account</h2>
-            {/* @ts-ignore - Coinflow type mismatch with wallet adapter */}
+            <p className="text-sm text-gray-600 mb-4">
+              USDC has been successfully bridged to Solana via CCTP!
+              <br />
+              Use the Coinflow widget below to withdraw to your bank account.
+            </p>
+            {/* @ts-ignore - Coinflow expects specific wallet interface */}
             <CoinflowWithdraw
-              wallet={solanaWallet as any}
+              wallet={{
+                publicKey: new PublicKey(solanaAddress),
+                signTransaction: async (tx: any) => await solanaSigner.signTransaction(tx, solanaAddress),
+                signAllTransactions: async (txs: any[]) => await Promise.all(
+                  txs.map(tx => solanaSigner.signTransaction(tx, solanaAddress))
+                ),
+              } as any}
               merchantId={COINFLOW_MERCHANT_ID}
               env={process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet' ? 'prod' : 'sandbox'}
               connection={solanaConnection}
