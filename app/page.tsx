@@ -185,11 +185,7 @@ export default function Home() {
           }
 
           console.log('📝 Getting or creating Solana account for wallet:', walletId);
-          const solAddress = await getOrCreateSolanaAccount(
-            httpClient,
-            organizationId,
-            walletId
-          );
+          const solAddress = await getOrCreateSolanaAccount(walletId);
 
           setSolanaAddress(solAddress);
           console.log('✅ Solana account ready:', solAddress);
