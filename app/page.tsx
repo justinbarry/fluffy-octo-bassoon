@@ -71,6 +71,7 @@ export default function Home() {
 
   // Balance state
   const [xionUsdcBalance, setXionUsdcBalance] = useState<string>('0');
+  const [nobleUsdcBalance, setNobleUsdcBalance] = useState<string>('0');
   const [solanaUsdcBalance, setSolanaUsdcBalance] = useState<number>(0);
 
   // CCTP flow state
@@ -308,6 +309,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [xionAddress, queryClient]);
 
+  // Fetch Noble USDC balance
+  useEffect(() => {
+    const fetchNobleBalance = async () => {
+      if (!nobleAddress || !queryClient) return;
+
+      try {
+        const balance = await queryClient.getBalance(nobleAddress, 'uusdc');
+        setNobleUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
+      } catch (error) {
+        console.error('Error fetching Noble balance:', error);
+      }
+    };
+
+    fetchNobleBalance();
+    const interval = setInterval(fetchNobleBalance, 10000);
+    return () => clearInterval(interval);
+  }, [nobleAddress, queryClient]);
+
   // Fetch Solana USDC balance
   useEffect(() => {
     const fetchSolanaBalance = async () => {
@@ -474,6 +493,146 @@ export default function Home() {
     setTransferAmount('');
   };
 
+  // IBC Transfer Noble → Xion
+  const transferNobleToXion = async () => {
+    if (!nobleAddress || !xionAddress || !nobleSigningClient) {
+      setError('Noble signing client not available');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      setStatusMessage('Transferring USDC from Noble back to Xion...');
+
+      const ibcMsg = {
+        typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
+        value: MsgTransfer.fromPartial({
+          sourcePort: 'transfer',
+          sourceChannel: process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
+            ? 'channel-0' // Noble to Xion mainnet channel
+            : 'channel-0', // Noble to Xion testnet channel
+          token: {
+            denom: 'uusdc',
+            amount: `${parseFloat(nobleUsdcBalance) * 1000000}`,
+          },
+          sender: nobleAddress,
+          receiver: xionAddress,
+          timeoutHeight: undefined,
+          timeoutTimestamp: BigInt(Date.now() + 10 * 60 * 1000) * BigInt(1000000),
+          memo: 'Return USDC to Xion',
+        }),
+      };
+
+      const result = await nobleSigningClient.signAndBroadcast(
+        nobleAddress,
+        [ibcMsg],
+        {
+          amount: [{ denom: 'uusdc', amount: '25000' }],
+          gas: '200000'
+        },
+        'IBC transfer back to Xion'
+      );
+
+      if (result.code !== 0) {
+        throw new Error(`IBC transfer failed: ${result.rawLog}`);
+      }
+
+      console.log('✅ Noble → Xion transfer successful:', result.transactionHash);
+      setStatusMessage(`Success! TX: ${result.transactionHash}`);
+
+      // Refresh balances
+      setTimeout(() => {
+        setStatusMessage('');
+      }, 5000);
+    } catch (err: any) {
+      console.error('Noble → Xion transfer error:', err);
+      setError(err.message || 'Transfer failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // CCTP Burn Noble → Solana (skip Xion step)
+  const burnNobleToSolana = async () => {
+    if (!nobleAddress || !solanaAddress || !nobleSigningClient || !solanaSigner) {
+      setError('Noble or Solana signing client not available');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setTxHashes({});
+
+    try {
+      // Step 1: Burn USDC on Noble
+      setCctpStep('burn');
+      setStatusMessage('Burning USDC on Noble via CCTP...');
+
+      const solanaPublicKey = new PublicKey(solanaAddress);
+      const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
+
+      const burnResult = await burnUSDCOnNoble(
+        nobleSigningClient,
+        nobleAddress,
+        `${parseFloat(nobleUsdcBalance) * 1000000}`,
+        SOLANA_CONFIG.CCTP_DOMAIN,
+        solanaAddressBytes
+      );
+      setTxHashes({ nobleBurn: burnResult.transactionHash });
+
+      // Step 2: Get Circle attestation
+      setCctpStep('attest');
+      setStatusMessage('Fetching attestation from Circle (this may take 2-3 minutes)...');
+
+      const { attestation, message } = await getAttestationSignature(
+        burnResult.transactionHash,
+        240,
+        5000
+      );
+
+      const attestationHex = normalizeAttestation(attestation);
+      const messageHex = normalizeMessageBytes(burnResult.messageBytes || message);
+
+      if (!attestationHex || !messageHex) {
+        throw new Error('Failed to retrieve attestation or message bytes');
+      }
+
+      // Step 3: Mint USDC on Solana
+      setCctpStep('mint');
+      setStatusMessage('Minting USDC on Solana...');
+
+      const mintResult = await mintUSDCOnSolanaWithTurnkey(
+        solanaConnection,
+        solanaSigner,
+        solanaAddress,
+        messageHex,
+        attestationHex
+      );
+
+      if (!mintResult.success) {
+        throw new Error('Failed to mint USDC on Solana');
+      }
+
+      setTxHashes(prev => ({ ...prev, solanaMint: mintResult.transactionHash }));
+
+      // Success!
+      setCctpStep('complete');
+      setStatusMessage('CCTP Noble → Solana complete!');
+
+      setTimeout(() => {
+        resetFlow();
+      }, 5000);
+
+    } catch (err: any) {
+      console.error('Noble → Solana CCTP error:', err);
+      setError(err.message || 'CCTP transfer failed');
+      setCctpStep('idle');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Debug: Call Turnkey whoami endpoint
   const debugWhoAmI = async () => {
     if (!httpClient) {
@@ -567,11 +726,35 @@ export default function Home() {
         {(xionAddress || solanaAddress) && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-2xl font-semibold mb-4">Balances</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               {xionAddress && (
                 <div className="p-4 bg-indigo-50 rounded-lg">
                   <div className="text-sm text-gray-600">Xion USDC</div>
                   <div className="text-2xl font-bold">${xionUsdcBalance}</div>
+                </div>
+              )}
+              {nobleAddress && (
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <div className="text-sm text-gray-600">Noble USDC</div>
+                  <div className="text-2xl font-bold">${nobleUsdcBalance}</div>
+                  {parseFloat(nobleUsdcBalance) > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <button
+                        onClick={transferNobleToXion}
+                        disabled={loading}
+                        className="w-full text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
+                      >
+                        ← IBC to Xion
+                      </button>
+                      <button
+                        onClick={burnNobleToSolana}
+                        disabled={loading || !solanaAddress}
+                        className="w-full text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
+                      >
+                        → CCTP to Solana
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {solanaAddress && (
