@@ -135,9 +135,9 @@ export default function Home() {
             console.log(`     Curve: ${account.curve}`);
             console.log(`     Address: ${account.address}`);
 
-            if (account.curve === 'CURVE_SECP256K1') {
+            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_UNCOMPRESSED') {
               cosmosWalletAccount = account;
-              console.log('✅ Found secp256k1 wallet for Cosmos!');
+              console.log('✅ Found secp256k1 wallet with uncompressed address format!');
               break;
             }
           }
@@ -151,8 +151,13 @@ export default function Home() {
           );
         }
 
-        // Use walletAccountId for signWith, not the blockchain address
-        const signWith = cosmosWalletAccount.walletAccountId || '';
+        // Use the uncompressed address (public key) for signWith
+        // This is what TurnkeyDirectWallet expects for signing operations
+        const signWith = cosmosWalletAccount.address || '';
+
+        console.log('🔑 Using signWith value:', signWith);
+        console.log('   Length:', signWith.length);
+        console.log('   Is hex:', /^[0-9a-fA-F]+$/.test(signWith));
 
         // Initialize Xion wallet with SUB-ORG ID (not root org)
         const xionWallet = await TurnkeyDirectWallet.init({
