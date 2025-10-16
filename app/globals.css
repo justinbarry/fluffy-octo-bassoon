@@ -1,3 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Note: Turnkey styles omitted due to build conflicts with Tailwind @layer utilities
+   The authentication modal/iframe should still work without these styles */
