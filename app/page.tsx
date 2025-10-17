@@ -29,7 +29,7 @@ import { convertXionToNoble } from '@/utils/addressConversion';
 import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
 import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
-import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
+import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 import { getOrganizationId } from '@/utils/turnkeyWallet';
 
 // USDC denom on Xion
@@ -207,6 +207,7 @@ export default function Home() {
         const nobleRegistry = new Registry([
           ...defaultRegistryTypes,
           [MsgDepositForBurn.typeUrl, MsgDepositForBurn as any],
+          [MsgDepositForBurnWithCaller.typeUrl, MsgDepositForBurnWithCaller as any],
         ] as Iterable<[string, any]>);
 
         const nobleClient = await SigningStargateClient.connectWithSigner(
