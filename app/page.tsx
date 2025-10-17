@@ -140,11 +140,13 @@ export default function Home() {
           for (const account of wallet.accounts) {
             console.log(`   Checking wallet account: ${account.walletAccountId}`);
             console.log(`     Curve: ${account.curve}`);
+            console.log(`     Address Format: ${account.addressFormat}`);
             console.log(`     Address: ${account.address}`);
 
-            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_UNCOMPRESSED') {
+            // Prefer ADDRESS_FORMAT_COSMOS for signWith (this is what TurnkeyDirectWallet expects)
+            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_COSMOS') {
               cosmosWalletAccount = account;
-              console.log('✅ Found secp256k1 wallet with uncompressed address format!');
+              console.log('✅ Found secp256k1 wallet with Cosmos address format!');
               break;
             }
           }
@@ -154,17 +156,17 @@ export default function Home() {
 
         if (!cosmosWalletAccount) {
           throw new Error(
-            'No secp256k1 wallet found. Please re-authenticate to create a Cosmos wallet.'
+            'No secp256k1 wallet with ADDRESS_FORMAT_COSMOS found. Please re-authenticate to create a Cosmos wallet.'
           );
         }
 
-        // Use the uncompressed address (public key) for signWith
-        // This is what TurnkeyDirectWallet expects for signing operations
+        // Use the Cosmos bech32 address for signWith
         const signWith = cosmosWalletAccount.address || '';
 
         console.log('🔑 Using signWith value:', signWith);
+        console.log('   Address format:', cosmosWalletAccount.addressFormat);
         console.log('   Length:', signWith.length);
-        console.log('   Is hex:', /^[0-9a-fA-F]+$/.test(signWith));
+        console.log('   Starts with:', signWith.slice(0, 10));
 
         // Initialize Xion wallet with SUB-ORG ID (not root org)
         const xionWallet = await TurnkeyDirectWallet.init({
