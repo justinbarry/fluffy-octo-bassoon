@@ -254,6 +254,8 @@ export default function Home() {
 
             if (solanaAccount?.address) {
               console.log('✅ Found existing Solana wallet');
+              console.log('   Solana address:', solanaAccount.address);
+              console.log('   Solana address length:', solanaAccount.address.length);
               solanaWalletAddress = solanaAccount.address;
               break;
             }
@@ -280,7 +282,11 @@ export default function Home() {
             console.log('✅ Created Solana wallet:', solanaWalletAddress);
           }
 
+          console.log('📍 Setting Solana address:', solanaWalletAddress);
           setSolanaAddress(solanaWalletAddress);
+
+          // Verify state was set
+          console.log('✅ Solana address state updated');
         } catch (error) {
           console.error('❌ Failed to get/create Solana wallet:', error);
           console.warn('⚠️ Continuing without Solana');
@@ -288,6 +294,11 @@ export default function Home() {
         }
 
         console.log('✅ All signing clients initialized');
+        console.log('📊 Final addresses:', {
+          xion: xionAddr,
+          noble: convertXionToNoble(xionAddr || ''),
+          solana: solanaWalletAddress
+        });
       } catch (error) {
         console.error('Failed to initialize signing clients:', error);
         setXionSigningClient(null);
