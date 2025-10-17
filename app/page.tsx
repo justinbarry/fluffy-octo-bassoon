@@ -605,25 +605,33 @@ export default function Home() {
 
       // Calculate amount to burn (subtract gas fee buffer)
       // Noble requires USDC for gas, so reserve extra to be safe
-      const balanceInMicroUnits = parseFloat(nobleUsdcBalance) * 1000000;
+
+      // Query fresh Noble balance before burning
+      const freshNobleBalance = await nobleQueryClient!.getBalance(nobleAddress, 'uusdc');
+      const balanceInMicroUnits = parseInt(freshNobleBalance.amount);
       const gasFeeBuffer = 40000; // 0.04 USDC buffer for gas fees
-      const burnAmount = Math.floor(balanceInMicroUnits - gasFeeBuffer);
+      const burnAmount = balanceInMicroUnits - gasFeeBuffer;
 
       if (burnAmount <= 0) {
         throw new Error('Insufficient balance. Need at least 0.04 USDC for gas fees.');
       }
 
+      // Ensure it's a valid integer string (no decimals, no scientific notation)
+      const burnAmountString = Math.floor(burnAmount).toString();
+
       console.log('💰 Burn calculation:', {
+        balanceStr: freshNobleBalance.amount,
         balance: balanceInMicroUnits,
         gasFeeBuffer,
         burnAmount,
+        burnAmountString,
         burnUSDC: (burnAmount / 1000000).toFixed(6)
       });
 
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient,
         nobleAddress,
-        burnAmount.toString(),
+        burnAmountString,
         SOLANA_CONFIG.CCTP_DOMAIN,
         solanaAddressBytes
       );
