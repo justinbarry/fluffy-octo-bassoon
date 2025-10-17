@@ -202,16 +202,29 @@ export async function getSolanaUSDCBalance(
 ): Promise<number> {
   try {
     const usdcMint = new PublicKey(SOLANA_USDC_MINT);
+
+    console.log('🔍 Fetching Solana USDC balance:', {
+      wallet: walletAddress.toBase58(),
+      usdcMint: SOLANA_USDC_MINT,
+      network: process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet',
+      rpcEndpoint: connection.rpcEndpoint
+    });
+
     const tokenAccount = await getAssociatedTokenAddress(
       usdcMint,
       walletAddress
     );
 
+    console.log('   Token account (ATA):', tokenAccount.toBase58());
+
     const balance = await connection.getTokenAccountBalance(tokenAccount);
+    console.log('   Balance:', balance.value.uiAmount, 'USDC');
+
     return parseFloat(balance.value.uiAmount?.toString() || '0');
   } catch (error: any) {
     // Token account doesn't exist yet (expected before first USDC transfer)
     if (error?.message?.includes('could not find account')) {
+      console.log('ℹ️ Solana USDC token account not found (will be created when receiving first USDC)');
       return 0; // Return 0 balance silently
     }
     console.error('Error fetching Solana USDC balance:', error);
