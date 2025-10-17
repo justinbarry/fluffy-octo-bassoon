@@ -8,6 +8,15 @@ export interface MsgDepositForBurn {
   burnToken: string;
 }
 
+export interface MsgDepositForBurnWithCaller {
+  from: string;
+  amount: string;
+  destinationDomain: number;
+  mintRecipient: Uint8Array;
+  burnToken: string;
+  destinationCaller: Uint8Array;
+}
+
 function createBaseMsgDepositForBurn(): MsgDepositForBurn {
   return {
     from: '',
@@ -79,6 +88,21 @@ export const MsgDepositForBurn = {
 };
 
 export type Builtin = Date | Function | Uint8Array | string | number | boolean | undefined;
+
+export const MsgDepositForBurnWithCaller = {
+  typeUrl: '/circle.cctp.v1.MsgDepositForBurnWithCaller',
+
+  fromPartial(object: DeepPartial<MsgDepositForBurnWithCaller>): MsgDepositForBurnWithCaller {
+    return {
+      from: object.from ?? '',
+      amount: object.amount ?? '',
+      destinationDomain: object.destinationDomain ?? 0,
+      mintRecipient: object.mintRecipient ?? new Uint8Array(0),
+      burnToken: object.burnToken ?? '',
+      destinationCaller: object.destinationCaller ?? new Uint8Array(0),
+    };
+  },
+};
 
 export type DeepPartial<T> = T extends Builtin
   ? T

@@ -8,10 +8,10 @@ import { SigningStargateClient } from '@cosmjs/stargate';
 import { Buffer } from 'buffer';
 import { NOBLE_CONFIG } from '@/config/api';
 import { CCTPBurnResult } from '@/types/cctp';
-import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
+import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 
 /**
- * Burn USDC on Noble using CCTP to transfer to Base
+ * Burn USDC on Noble using CCTP to transfer to Solana
  *
  * Noble implements CCTP as a Cosmos SDK module (not smart contracts like EVM chains).
  * The module uses the message type: /circle.cctp.v1.MsgDepositForBurn
@@ -19,8 +19,9 @@ import { MsgDepositForBurn } from '@/proto/circle/cctp/v1/tx';
  * @param signingClient - Noble signing client
  * @param senderAddress - Noble sender address (noble1...)
  * @param amount - Amount in micro-units (1 USDC = 1,000,000 uusdc)
- * @param destinationDomain - CCTP domain ID for destination (Base = 6)
- * @param mintRecipient - EVM address on Base to receive USDC (0x...)
+ * @param destinationDomain - CCTP domain ID for destination (5 = Solana)
+ * @param mintRecipient - Solana address as hex bytes (32 bytes)
+ * @param destinationCaller - Optional: Address allowed to call receiveMessage on destination
  * @returns Burn transaction result with message details
  */
 export async function burnUSDCOnNoble(
@@ -28,7 +29,8 @@ export async function burnUSDCOnNoble(
   senderAddress: string,
   amount: string,
   destinationDomain: number,
-  mintRecipient: string
+  mintRecipient: string,
+  destinationCaller?: string
 ): Promise<CCTPBurnResult> {
   console.log('🔥 Initiating CCTP burn on Noble:', {
     sender: senderAddress,
@@ -49,28 +51,52 @@ export async function burnUSDCOnNoble(
     bytes: Array.from(mintRecipientBytes.slice(0, 8)) // First 8 bytes for debugging
   });
 
+  // Parse destinationCaller if provided (for relayer-based minting)
+  const destinationCallerBytes = destinationCaller
+    ? Buffer.from(destinationCaller.replace('0x', ''), 'hex')
+    : null;
+
+  if (destinationCallerBytes) {
+    console.log('🔐 Using trusted relayer for destination:', {
+      destinationCaller,
+      bytesLength: destinationCallerBytes.length
+    });
+  }
+
   // Noble CCTP module message type
   // Reference: https://github.com/circlefin/noble-cctp
-  // Note: Using MsgDepositForBurn (not MsgDepositForBurnWithCaller)
-  // This message type allows ANY relayer to call receiveMessage on destination
-  // which enables permissionless relaying from the user's frontend
-  const burnMsg: EncodeObject = {
-    typeUrl: MsgDepositForBurn.typeUrl,
-    value: MsgDepositForBurn.fromPartial({
-      from: senderAddress,
-      amount: amount,
-      destinationDomain: destinationDomain,
-      mintRecipient: mintRecipientBytes,
-      burnToken: NOBLE_CONFIG.USDC_DENOM,
-      // No destinationCaller field = allows ANY address to relay (permissionless)
-    }),
-  };
+  const burnMsg: EncodeObject = destinationCallerBytes
+    ? {
+        // Use MsgDepositForBurnWithCaller when relayer is specified
+        typeUrl: MsgDepositForBurnWithCaller.typeUrl,
+        value: MsgDepositForBurnWithCaller.fromPartial({
+          from: senderAddress,
+          amount: amount,
+          destinationDomain: destinationDomain,
+          mintRecipient: mintRecipientBytes,
+          burnToken: NOBLE_CONFIG.USDC_DENOM,
+          destinationCaller: destinationCallerBytes,
+        }),
+      }
+    : {
+        // Use basic MsgDepositForBurn for permissionless relaying
+        typeUrl: MsgDepositForBurn.typeUrl,
+        value: MsgDepositForBurn.fromPartial({
+          from: senderAddress,
+          amount: amount,
+          destinationDomain: destinationDomain,
+          mintRecipient: mintRecipientBytes,
+          burnToken: NOBLE_CONFIG.USDC_DENOM,
+        }),
+      };
 
-  console.log('📝 Burn message value:', {
+  console.log('📝 Burn message:', {
+    type: burnMsg.typeUrl,
     from: senderAddress,
     amount: amount,
     destinationDomain: destinationDomain,
     mintRecipientLength: mintRecipientBytes.length,
+    hasDestinationCaller: !!destinationCallerBytes,
     burnToken: NOBLE_CONFIG.USDC_DENOM
   });
 

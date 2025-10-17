@@ -441,12 +441,16 @@ export default function Home() {
         burnUSDC: (burnAmountFromNoble / 1000000).toFixed(6)
       });
 
+      // Use Coinflow's trusted relayer for Solana destination
+      const SOLANA_RELAYER = '0xbac7599ecaaab190705ffff99f0625f33a4caf6b3ccccd0fa6cc0cc988e31ce1';
+
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient!,
         nobleAddress,
         burnAmountFromNoble.toString(),
         SOLANA_CONFIG.CCTP_DOMAIN, // Domain 5 for Solana
-        solanaAddressBytes
+        solanaAddressBytes,
+        SOLANA_RELAYER // Coinflow's relayer will complete the mint
       );
       setTxHashes(prev => ({ ...prev, nobleBurn: burnResult.transactionHash }));
 
@@ -656,12 +660,16 @@ export default function Home() {
         burnUSDC: (burnAmount / 1000000).toFixed(6)
       });
 
+      // Use Coinflow's trusted relayer for Solana destination
+      const SOLANA_RELAYER = '0xbac7599ecaaab190705ffff99f0625f33a4caf6b3ccccd0fa6cc0cc988e31ce1';
+
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient,
         nobleAddress,
         burnAmountString,
         SOLANA_CONFIG.CCTP_DOMAIN,
-        solanaAddressBytes
+        solanaAddressBytes,
+        SOLANA_RELAYER // Coinflow's relayer will complete the mint
       );
       setTxHashes({ nobleBurn: burnResult.transactionHash });
 
