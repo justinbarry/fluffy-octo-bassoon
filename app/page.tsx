@@ -762,9 +762,19 @@ export default function Home() {
           {solanaAddress && (
             <div className="mt-4 p-3 bg-purple-50 rounded-lg">
               <div className="text-sm font-medium text-gray-700">Solana (Turnkey)</div>
-              <div className="text-xs text-gray-600 mt-1">
+              <div className="text-xs text-gray-600 mt-1 break-all font-mono">
                 {solanaAddress}
               </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(solanaAddress);
+                  setStatusMessage('Solana address copied!');
+                  setTimeout(() => setStatusMessage(''), 2000);
+                }}
+                className="mt-2 text-xs text-purple-600 hover:text-purple-800"
+              >
+                📋 Copy address
+              </button>
             </div>
           )}
 
