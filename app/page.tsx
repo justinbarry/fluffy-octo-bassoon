@@ -367,8 +367,23 @@ export default function Home() {
 
   // CCTP Transfer Handler
   const handleCCTPTransfer = async () => {
+    console.log('🚀 Starting CCTP transfer...');
+    console.log('   Addresses:', { xionAddress, nobleAddress, solanaAddress });
+    console.log('   Clients:', {
+      xionSigning: !!xionSigningClient,
+      nobleSigning: !!nobleSigningClient,
+      solanaSigner: !!solanaSigner,
+      xionQuery: !!xionQueryClient,
+      nobleQuery: !!nobleQueryClient
+    });
+
     if (!xionAddress || !nobleAddress || !solanaAddress) {
       setError('Please connect Turnkey wallet (Xion, Noble, and Solana addresses required)');
+      return;
+    }
+
+    if (!xionSigningClient || !nobleSigningClient || !nobleQueryClient) {
+      setError('Signing clients not initialized. Please wait for connection to complete.');
       return;
     }
 
