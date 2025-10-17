@@ -143,10 +143,10 @@ export default function Home() {
             console.log(`     Address Format: ${account.addressFormat}`);
             console.log(`     Address: ${account.address}`);
 
-            // Prefer ADDRESS_FORMAT_COSMOS for signWith (this is what TurnkeyDirectWallet expects)
-            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_COSMOS') {
+            // Use UNCOMPRESSED format (raw public key) for signWith
+            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_UNCOMPRESSED') {
               cosmosWalletAccount = account;
-              console.log('✅ Found secp256k1 wallet with Cosmos address format!');
+              console.log('✅ Found secp256k1 wallet with UNCOMPRESSED format (raw key)!');
               break;
             }
           }
@@ -156,17 +156,17 @@ export default function Home() {
 
         if (!cosmosWalletAccount) {
           throw new Error(
-            'No secp256k1 wallet with ADDRESS_FORMAT_COSMOS found. Please re-authenticate to create a Cosmos wallet.'
+            'No secp256k1 wallet with ADDRESS_FORMAT_UNCOMPRESSED found. Please re-authenticate.'
           );
         }
 
-        // Use the Cosmos bech32 address for signWith
+        // Use the uncompressed public key (raw key) for signWith
         const signWith = cosmosWalletAccount.address || '';
 
-        console.log('🔑 Using signWith value:', signWith);
+        console.log('🔑 Using signWith (raw public key):', signWith);
         console.log('   Address format:', cosmosWalletAccount.addressFormat);
         console.log('   Length:', signWith.length);
-        console.log('   Starts with:', signWith.slice(0, 10));
+        console.log('   Is hex:', /^[0-9a-fA-F]+$/.test(signWith));
 
         // Initialize Xion wallet with SUB-ORG ID (not root org)
         const xionWallet = await TurnkeyDirectWallet.init({
