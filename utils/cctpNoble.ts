@@ -33,8 +33,20 @@ export async function burnUSDCOnNoble(
   console.log('🔥 Initiating CCTP burn on Noble:', {
     sender: senderAddress,
     amount: `${amount} uusdc`,
+    amountType: typeof amount,
+    amountLength: amount.length,
     destinationDomain,
-    mintRecipient
+    destinationDomainType: typeof destinationDomain,
+    mintRecipient,
+    mintRecipientLength: mintRecipient.length
+  });
+
+  // Parse mintRecipient and validate
+  const mintRecipientBytes = Buffer.from(mintRecipient.replace('0x', ''), 'hex');
+  console.log('🔍 Mint recipient bytes:', {
+    hex: mintRecipient,
+    bytesLength: mintRecipientBytes.length,
+    bytes: Array.from(mintRecipientBytes.slice(0, 8)) // First 8 bytes for debugging
   });
 
   // Noble CCTP module message type
@@ -46,13 +58,21 @@ export async function burnUSDCOnNoble(
     typeUrl: MsgDepositForBurn.typeUrl,
     value: MsgDepositForBurn.fromPartial({
       from: senderAddress,
-      amount,
-      destinationDomain,
-      mintRecipient: Buffer.from(mintRecipient.replace('0x', ''), 'hex'),
+      amount: amount,
+      destinationDomain: destinationDomain,
+      mintRecipient: mintRecipientBytes,
       burnToken: NOBLE_CONFIG.USDC_DENOM,
       // No destinationCaller field = allows ANY address to relay (permissionless)
     }),
   };
+
+  console.log('📝 Burn message value:', {
+    from: senderAddress,
+    amount: amount,
+    destinationDomain: destinationDomain,
+    mintRecipientLength: mintRecipientBytes.length,
+    burnToken: NOBLE_CONFIG.USDC_DENOM
+  });
 
   try {
     // Set gas fee for Noble transaction
