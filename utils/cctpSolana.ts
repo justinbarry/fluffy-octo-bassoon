@@ -209,7 +209,11 @@ export async function getSolanaUSDCBalance(
 
     const balance = await connection.getTokenAccountBalance(tokenAccount);
     return parseFloat(balance.value.uiAmount?.toString() || '0');
-  } catch (error) {
+  } catch (error: any) {
+    // Token account doesn't exist yet (expected before first USDC transfer)
+    if (error?.message?.includes('could not find account')) {
+      return 0; // Return 0 balance silently
+    }
     console.error('Error fetching Solana USDC balance:', error);
     return 0;
   }
