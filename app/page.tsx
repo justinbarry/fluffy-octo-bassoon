@@ -590,7 +590,7 @@ export default function Home() {
 
       console.log('💰 Burn calculation:', {
         balance: balanceInMicroUnits,
-        gasFee,
+        gasFeeBuffer,
         burnAmount,
         burnUSDC: (burnAmount / 1000000).toFixed(6)
       });
