@@ -227,6 +227,7 @@ export default function Home() {
         setSolanaSigner(solanaTurnkeySigner);
 
         // Get or create Solana wallet (client-side with passkey auth)
+        let solanaWalletAddress = '';
         try {
 
           console.log('📝 Getting or creating Solana wallet...');
@@ -240,7 +241,6 @@ export default function Home() {
 
           // Look for existing Solana wallet
           const wallets = walletsResponse.wallets || [];
-          let solanaWalletAddress = '';
 
           for (const wallet of wallets) {
             const accountsResponse = await httpClient.getWalletAccounts({
