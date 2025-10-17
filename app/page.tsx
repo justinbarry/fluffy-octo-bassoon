@@ -380,7 +380,17 @@ export default function Home() {
       setStatusMessage('Waiting for IBC settlement (~8 seconds)...');
       await new Promise(resolve => setTimeout(resolve, 8000));
 
-      // Step 2: Burn USDC on Noble
+      // Query actual Noble balance after IBC transfer
+      setStatusMessage('Checking Noble balance...');
+      const nobleBalance = await nobleQueryClient!.getBalance(nobleAddress, 'uusdc');
+      const nobleBalanceInMicroUnits = parseInt(nobleBalance.amount);
+
+      console.log('💰 Noble balance after IBC:', {
+        balance: nobleBalanceInMicroUnits,
+        balanceUSDC: (nobleBalanceInMicroUnits / 1000000).toFixed(6)
+      });
+
+      // Step 2: Burn USDC on Noble (subtract gas fee)
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
@@ -388,10 +398,25 @@ export default function Home() {
       const solanaPublicKey = new PublicKey(solanaAddress);
       const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
 
+      // Reserve gas fee from actual Noble balance
+      const gasFeeBuffer = 40000; // 0.04 USDC
+      const burnAmountFromNoble = Math.floor(nobleBalanceInMicroUnits - gasFeeBuffer);
+
+      if (burnAmountFromNoble <= 0) {
+        throw new Error('Insufficient Noble balance after IBC transfer. Need at least 0.04 USDC for gas.');
+      }
+
+      console.log('🔥 Burning on Noble:', {
+        nobleBalance: nobleBalanceInMicroUnits,
+        gasFeeBuffer,
+        burnAmount: burnAmountFromNoble,
+        burnUSDC: (burnAmountFromNoble / 1000000).toFixed(6)
+      });
+
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient!,
         nobleAddress,
-        formatUSDCAmount(transferAmount),
+        burnAmountFromNoble.toString(),
         SOLANA_CONFIG.CCTP_DOMAIN, // Domain 5 for Solana
         solanaAddressBytes
       );
