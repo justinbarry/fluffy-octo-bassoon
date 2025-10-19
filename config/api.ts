@@ -33,7 +33,7 @@ export const NOBLE_CONFIG = {
 } as const;
 
 export const SOLANA_CONFIG = {
-  MAINNET_RPC_URL: "https://api.mainnet-beta.solana.com",
+  MAINNET_RPC_URL: "https://solana-mainnet.g.alchemy.com/v2/wM3Tec7EMttWaxoaASS4WX6Un5FQDLJm",
   DEVNET_RPC_URL: "https://api.devnet.solana.com",
   // USDC Mint addresses
   MAINNET_USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",

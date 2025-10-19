@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTurnkey, AuthState } from '@turnkey/react-wallet-kit';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { SigningStargateClient, GasPrice, defaultRegistryTypes } from '@cosmjs/stargate';
 import { Registry } from '@cosmjs/proto-signing';
@@ -23,6 +24,7 @@ import {
   COINFLOW_BASE_URL,
   NOBLE_CONFIG,
   SOLANA_CONFIG,
+  SOLANA_USDC_MINT,
 } from '@/config/api';
 import { convertXionToNoble } from '@/utils/addressConversion';
 
@@ -84,6 +86,8 @@ export default function Home() {
 
   // UI state
   const [loading, setLoading] = useState(false);
+  const [nobleToXionAmount, setNobleToXionAmount] = useState<string>('');
+  const [nobleToSolanaAmount, setNobleToSolanaAmount] = useState<string>('');
 
   const firstWallet = Array.isArray(wallets) ? wallets[0] : wallets;
 
@@ -423,9 +427,19 @@ export default function Home() {
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
-      // Convert Solana address (base58) to bytes for CCTP
+      // Calculate Solana USDC Associated Token Account (ATA) address
+      // CRITICAL: CCTP must mint to the token account, not the wallet address
       const solanaPublicKey = new PublicKey(solanaAddress);
-      const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
+      const usdcMint = new PublicKey(SOLANA_USDC_MINT);
+      const solanaUsdcAta = await getAssociatedTokenAddress(usdcMint, solanaPublicKey);
+      const solanaAtaBytes = '0x' + Buffer.from(solanaUsdcAta.toBytes()).toString('hex');
+
+      console.log('🎯 Solana CCTP destination:', {
+        wallet: solanaAddress,
+        usdcMint: SOLANA_USDC_MINT,
+        ata: solanaUsdcAta.toBase58(),
+        ataBytes: solanaAtaBytes
+      });
 
       // Reserve gas fee from actual Noble balance
       const gasFeeBuffer = 40000; // 0.04 USDC
@@ -450,7 +464,7 @@ export default function Home() {
         nobleAddress,
         burnAmountFromNoble.toString(),
         SOLANA_CONFIG.CCTP_DOMAIN, // Domain 5 for Solana
-        solanaAddressBytes,
+        solanaAtaBytes, // Use ATA address, not wallet address
         SOLANA_RELAYER // Coinflow's relayer will complete the mint
       );
       setTxHashes(prev => ({ ...prev, nobleBurn: burnResult.transactionHash }));
@@ -558,8 +572,8 @@ export default function Home() {
   };
 
   // IBC Transfer Noble → Xion
-  const transferNobleToXion = async () => {
-    if (!nobleAddress || !xionAddress || !nobleSigningClient) {
+  const transferNobleToXion = async (inputAmount?: string) => {
+    if (!nobleAddress || !xionAddress || !nobleSigningClient || !nobleQueryClient) {
       setError('Noble signing client not available');
       return;
     }
@@ -568,6 +582,38 @@ export default function Home() {
       setLoading(true);
       setError('');
       setStatusMessage('Transferring USDC from Noble back to Xion...');
+
+      // Query fresh Noble balance
+      const freshNobleBalance = await nobleQueryClient.getBalance(nobleAddress, 'uusdc');
+      const balanceInMicroUnits = parseInt(freshNobleBalance.amount);
+
+      // Reserve gas fee (0.025 USDC)
+      const gasFeeBuffer = 25000; // 0.025 USDC for gas
+
+      // Calculate transfer amount
+      let transferAmount: number;
+      if (inputAmount && parseFloat(inputAmount) > 0) {
+        // Use specified amount
+        const requestedAmount = Math.floor(parseFloat(inputAmount) * 1000000);
+        if (requestedAmount + gasFeeBuffer > balanceInMicroUnits) {
+          throw new Error('Insufficient balance for requested amount plus gas fees.');
+        }
+        transferAmount = requestedAmount;
+      } else {
+        // Transfer all (minus gas)
+        transferAmount = balanceInMicroUnits - gasFeeBuffer;
+      }
+
+      if (transferAmount <= 0) {
+        throw new Error('Insufficient balance. Need at least 0.025 USDC for gas fees.');
+      }
+
+      console.log('💰 IBC Transfer calculation:', {
+        balance: balanceInMicroUnits,
+        gasFeeBuffer,
+        transferAmount,
+        transferUSDC: (transferAmount / 1000000).toFixed(6)
+      });
 
       const ibcMsg = {
         typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
@@ -578,7 +624,7 @@ export default function Home() {
             : 'channel-0', // Noble to Xion testnet channel
           token: {
             denom: 'uusdc',
-            amount: `${parseFloat(nobleUsdcBalance) * 1000000}`,
+            amount: transferAmount.toString(),
           },
           sender: nobleAddress,
           receiver: xionAddress,
@@ -618,7 +664,7 @@ export default function Home() {
   };
 
   // CCTP Burn Noble → Solana (skip Xion step)
-  const burnNobleToSolana = async () => {
+  const burnNobleToSolana = async (inputAmount?: string) => {
     if (!nobleAddress || !solanaAddress || !nobleSigningClient || !solanaSigner) {
       setError('Noble or Solana signing client not available');
       return;
@@ -633,17 +679,38 @@ export default function Home() {
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
+      // Calculate Solana USDC Associated Token Account (ATA) address
+      // CRITICAL: CCTP must mint to the token account, not the wallet address
       const solanaPublicKey = new PublicKey(solanaAddress);
-      const solanaAddressBytes = '0x' + Buffer.from(solanaPublicKey.toBytes()).toString('hex');
+      const usdcMint = new PublicKey(SOLANA_USDC_MINT);
+      const solanaUsdcAta = await getAssociatedTokenAddress(usdcMint, solanaPublicKey);
+      const solanaAtaBytes = '0x' + Buffer.from(solanaUsdcAta.toBytes()).toString('hex');
 
-      // Calculate amount to burn (subtract gas fee buffer)
-      // Noble requires USDC for gas, so reserve extra to be safe
+      console.log('🎯 Solana CCTP destination:', {
+        wallet: solanaAddress,
+        usdcMint: SOLANA_USDC_MINT,
+        ata: solanaUsdcAta.toBase58(),
+        ataBytes: solanaAtaBytes
+      });
 
       // Query fresh Noble balance before burning
       const freshNobleBalance = await nobleQueryClient!.getBalance(nobleAddress, 'uusdc');
       const balanceInMicroUnits = parseInt(freshNobleBalance.amount);
       const gasFeeBuffer = 40000; // 0.04 USDC buffer for gas fees
-      const burnAmount = balanceInMicroUnits - gasFeeBuffer;
+
+      // Calculate burn amount
+      let burnAmount: number;
+      if (inputAmount && parseFloat(inputAmount) > 0) {
+        // Use specified amount
+        const requestedAmount = Math.floor(parseFloat(inputAmount) * 1000000);
+        if (requestedAmount + gasFeeBuffer > balanceInMicroUnits) {
+          throw new Error('Insufficient balance for requested amount plus gas fees.');
+        }
+        burnAmount = requestedAmount;
+      } else {
+        // Burn all (minus gas)
+        burnAmount = balanceInMicroUnits - gasFeeBuffer;
+      }
 
       if (burnAmount <= 0) {
         throw new Error('Insufficient balance. Need at least 0.04 USDC for gas fees.');
@@ -669,45 +736,44 @@ export default function Home() {
         nobleAddress,
         burnAmountString,
         SOLANA_CONFIG.CCTP_DOMAIN,
-        solanaAddressBytes,
+        solanaAtaBytes, // Use ATA address, not wallet address
         SOLANA_RELAYER // Coinflow's relayer will complete the mint
       );
       setTxHashes({ nobleBurn: burnResult.transactionHash });
 
-      // Step 2: Get Circle attestation
-      setCctpStep('attest');
-      setStatusMessage('Fetching attestation from Circle (this may take 2-3 minutes)...');
-
-      const { attestation, message } = await getAttestationSignature(
-        burnResult.transactionHash,
-        240,
-        5000
-      );
-
-      const attestationHex = normalizeAttestation(attestation);
-      const messageHex = normalizeMessageBytes(burnResult.messageBytes || message);
-
-      if (!attestationHex || !messageHex) {
-        throw new Error('Failed to retrieve attestation or message bytes');
-      }
-
-      // Step 3: Mint USDC on Solana
+      // When using a relayer (MsgDepositForBurnWithCaller), the relayer handles
+      // attestation and minting automatically. We just wait for it to complete.
       setCctpStep('mint');
-      setStatusMessage('Minting USDC on Solana...');
+      setStatusMessage('Waiting for Coinflow relayer to complete the mint on Solana (this may take 2-3 minutes)...');
 
-      const mintResult = await mintUSDCOnSolanaWithTurnkey(
-        solanaConnection,
-        solanaSigner,
-        solanaAddress,
-        messageHex,
-        attestationHex
-      );
+      console.log('🔄 Relayer-based transfer initiated. Coinflow will handle attestation and minting.');
+      console.log('   Burn TX:', burnResult.transactionHash);
+      console.log('   Monitor your Solana balance for the incoming USDC.');
 
-      if (!mintResult.success) {
-        throw new Error('Failed to mint USDC on Solana');
+      // Poll Solana balance to detect when funds arrive
+      const initialBalance = solanaUsdcBalance;
+      const startTime = Date.now();
+      const maxWaitTime = 5 * 60 * 1000; // 5 minutes max
+
+      while (Date.now() - startTime < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5 seconds
+
+        // Fetch current balance
+        const publicKey = new PublicKey(solanaAddress);
+        const currentBalance = await getSolanaUSDCBalance(solanaConnection, publicKey);
+
+        console.log('💰 Checking Solana balance:', {
+          initial: initialBalance,
+          current: currentBalance,
+          elapsed: `${Math.floor((Date.now() - startTime) / 1000)}s`
+        });
+
+        if (currentBalance > initialBalance) {
+          console.log('✅ Funds detected on Solana! Transfer complete.');
+          setSolanaUsdcBalance(currentBalance);
+          break;
+        }
       }
-
-      setTxHashes(prev => ({ ...prev, solanaMint: mintResult.transactionHash }));
 
       // Success!
       setCctpStep('complete');
@@ -841,21 +907,43 @@ export default function Home() {
                   <div className="text-sm text-gray-600">Noble USDC</div>
                   <div className="text-2xl font-bold">${nobleUsdcBalance}</div>
                   {parseFloat(nobleUsdcBalance) > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <button
-                        onClick={transferNobleToXion}
-                        disabled={loading}
-                        className="w-full text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
-                      >
-                        ← IBC to Xion
-                      </button>
-                      <button
-                        onClick={burnNobleToSolana}
-                        disabled={loading || !solanaAddress}
-                        className="w-full text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
-                      >
-                        → CCTP to Solana
-                      </button>
+                    <div className="mt-3 space-y-2">
+                      {/* IBC to Xion */}
+                      <div>
+                        <input
+                          type="number"
+                          value={nobleToXionAmount}
+                          onChange={(e) => setNobleToXionAmount(e.target.value)}
+                          placeholder="Amount (or leave empty for all)"
+                          disabled={loading}
+                          className="w-full text-xs px-2 py-1 border border-gray-300 rounded mb-1"
+                        />
+                        <button
+                          onClick={() => transferNobleToXion(nobleToXionAmount)}
+                          disabled={loading}
+                          className="w-full text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
+                        >
+                          ← IBC to Xion
+                        </button>
+                      </div>
+                      {/* CCTP to Solana */}
+                      <div>
+                        <input
+                          type="number"
+                          value={nobleToSolanaAmount}
+                          onChange={(e) => setNobleToSolanaAmount(e.target.value)}
+                          placeholder="Amount (or leave empty for all)"
+                          disabled={loading || !solanaAddress}
+                          className="w-full text-xs px-2 py-1 border border-gray-300 rounded mb-1"
+                        />
+                        <button
+                          onClick={() => burnNobleToSolana(nobleToSolanaAmount)}
+                          disabled={loading || !solanaAddress}
+                          className="w-full text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
+                        >
+                          → CCTP to Solana
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
