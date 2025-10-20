@@ -1,36 +1,34 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTurnkey, AuthState } from '@turnkey/react-wallet-kit';
-import { Connection, PublicKey } from '@solana/web3.js';
-import { getAssociatedTokenAddress } from '@solana/spl-token';
+import { type WalletClient } from 'viem';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { SigningStargateClient, GasPrice, defaultRegistryTypes } from '@cosmjs/stargate';
 import { Registry } from '@cosmjs/proto-signing';
 import { fromBech32, toBech32 } from '@cosmjs/encoding';
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { TurnkeyDirectWallet } from '@turnkey/cosmjs';
-import { TurnkeySigner } from '@turnkey/solana';
-import { CoinflowWithdraw } from '@coinflowlabs/react';
 import { Buffer } from 'buffer';
 
 import {
   XION_RPC_URL,
   XION_REST_URL,
   NOBLE_RPC_URL,
-  SOLANA_RPC_URL,
+  BASE_RPC_URL,
   COINFLOW_API,
-  COINFLOW_MERCHANT_ID,
   COINFLOW_BASE_URL,
   NOBLE_CONFIG,
-  SOLANA_CONFIG,
-  SOLANA_USDC_MINT,
+  BASE_CONFIG,
+  BASE_USDC_ADDRESS,
 } from '@/config/api';
+import { COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
 import { convertXionToNoble } from '@/utils/addressConversion';
 
 import { burnUSDCOnNoble, formatUSDCAmount } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
-import { mintUSDCOnSolanaWithTurnkey, getSolanaUSDCBalance } from '@/utils/cctpSolana';
+import { mintUSDCOnBaseWithTurnkey, getBaseUSDCBalance, formatAddressForCCTP } from '@/utils/cctpBase';
+import { createTurnkeyBaseClient, deriveBaseAddress } from '@/utils/turnkeyBase';
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 import { getOrganizationId } from '@/utils/turnkeyWallet';
 
@@ -44,7 +42,7 @@ type CCTPStep = 'idle' | 'ibc' | 'burn' | 'attest' | 'mint' | 'complete';
 interface TxHashes {
   ibcTransfer?: string;
   nobleBurn?: string;
-  solanaMint?: string;
+  baseMint?: string;
 }
 
 export default function Home() {
@@ -63,19 +61,18 @@ export default function Home() {
   const [xionQueryClient, setXionQueryClient] = useState<CosmWasmClient | null>(null);
   const [nobleQueryClient, setNobleQueryClient] = useState<CosmWasmClient | null>(null);
 
-  // Solana client and signer
-  const [solanaSigner, setSolanaSigner] = useState<TurnkeySigner | null>(null);
-  const [solanaConnection] = useState<Connection>(() => new Connection(SOLANA_RPC_URL, 'confirmed'));
+  // Base wallet client
+  const [baseWalletClient, setBaseWalletClient] = useState<WalletClient | null>(null);
 
   // Account state
   const [xionAddress, setXionAddress] = useState<string>('');
   const [nobleAddress, setNobleAddress] = useState<string>('');
-  const [solanaAddress, setSolanaAddress] = useState<string>('');
+  const [baseAddress, setBaseAddress] = useState<string>('');
 
   // Balance state
   const [xionUsdcBalance, setXionUsdcBalance] = useState<string>('0');
   const [nobleUsdcBalance, setNobleUsdcBalance] = useState<string>('0');
-  const [solanaUsdcBalance, setSolanaUsdcBalance] = useState<number>(0);
+  const [baseUsdcBalance, setBaseUsdcBalance] = useState<number>(0);
 
   // CCTP flow state
   const [cctpStep, setCctpStep] = useState<CCTPStep>('idle');
@@ -87,7 +84,17 @@ export default function Home() {
   // UI state
   const [loading, setLoading] = useState(false);
   const [nobleToXionAmount, setNobleToXionAmount] = useState<string>('');
-  const [nobleToSolanaAmount, setNobleToSolanaAmount] = useState<string>('');
+  const [nobleToBaseAmount, setNobleToBaseAmount] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const [withdrawerDetails, setWithdrawerDetails] = useState<any>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
+  const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawalTxHash, setWithdrawalTxHash] = useState<string>('');
+  const [selectedSpeed, setSelectedSpeed] = useState<'standard' | 'same_day' | 'asap'>('standard');
+  const [quote, setQuote] = useState<any>(null);
+  const [gettingQuote, setGettingQuote] = useState(false);
 
   const firstWallet = Array.isArray(wallets) ? wallets[0] : wallets;
 
@@ -109,16 +116,16 @@ export default function Home() {
     initQueryClients();
   }, []);
 
-  // Initialize Xion, Noble, and Solana signing clients
+  // Initialize Xion, Noble, and Polygon signing clients
   useEffect(() => {
     const initSigningClients = async () => {
       if (!httpClient || !firstWallet?.accounts?.[0]) {
         setXionSigningClient(null);
         setNobleSigningClient(null);
-        setSolanaSigner(null);
+        setBaseWalletClient(null);
         setXionAddress('');
         setNobleAddress('');
-        setSolanaAddress('');
+        setBaseAddress('');
         return;
       }
 
@@ -131,51 +138,60 @@ export default function Home() {
         console.log('   Root org:', rootOrgId);
         console.log('   Is sub-org:', actualOrgId !== rootOrgId);
 
-        // Find the secp256k1 wallet for Cosmos (Xion/Noble)
-        console.log('🔍 Searching through all wallets for secp256k1 (Cosmos)...');
+        // Find accounts in the multi-chain wallet
+        console.log('🔍 Searching for multi-chain wallet accounts...');
         console.log('   Total wallets:', Array.isArray(wallets) ? wallets.length : 1);
 
-        let cosmosWalletAccount = null;
         const allWallets = Array.isArray(wallets) ? wallets : [wallets];
+        let cosmosUncompressedAccount = null;
+        let ethereumAccount = null;
 
-        for (const wallet of allWallets) {
-          if (!wallet?.accounts) continue;
+        // All accounts should be in the first wallet
+        const wallet = allWallets[0];
+        if (!wallet?.accounts) {
+          throw new Error('No wallet accounts found. Please re-authenticate.');
+        }
 
-          for (const account of wallet.accounts) {
-            console.log(`   Checking wallet account: ${account.walletAccountId}`);
-            console.log(`     Curve: ${account.curve}`);
-            console.log(`     Address Format: ${account.addressFormat}`);
-            console.log(`     Address: ${account.address}`);
+        console.log('   Found wallet with', wallet.accounts.length, 'accounts');
 
-            // Use UNCOMPRESSED format (raw public key) for signWith
-            if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_UNCOMPRESSED') {
-              cosmosWalletAccount = account;
-              console.log('✅ Found secp256k1 wallet with UNCOMPRESSED format (raw key)!');
-              break;
-            }
+        for (const account of wallet.accounts) {
+          console.log(`   - ${account.addressFormat} (${account.curve}): ${account.address.slice(0, 20)}...`);
+          console.log(`     Wallet Account ID: ${account.walletAccountId}`);
+
+          // Find Cosmos UNCOMPRESSED account for signing
+          if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_UNCOMPRESSED') {
+            cosmosUncompressedAccount = account;
+            console.log('     ✓ Found Cosmos signing key (UNCOMPRESSED)');
           }
 
-          if (cosmosWalletAccount) break;
+          // Find Ethereum account for EVM chains
+          if (account.curve === 'CURVE_SECP256K1' && account.addressFormat === 'ADDRESS_FORMAT_ETHEREUM') {
+            ethereumAccount = account;
+            console.log('     ✓ Found Ethereum account');
+            console.log(`     ✓ Ethereum wallet account ID: ${account.walletAccountId}`);
+          }
         }
 
-        if (!cosmosWalletAccount) {
-          throw new Error(
-            'No secp256k1 wallet with ADDRESS_FORMAT_UNCOMPRESSED found. Please re-authenticate.'
-          );
+        if (!cosmosUncompressedAccount) {
+          throw new Error('No Cosmos UNCOMPRESSED account found. Please re-authenticate with the new configuration.');
         }
 
-        // Use the uncompressed public key (raw key) for signWith
-        const signWith = cosmosWalletAccount.address || '';
+        if (!ethereumAccount) {
+          throw new Error('No Ethereum account found. Please re-authenticate with the new configuration.');
+        }
 
-        console.log('🔑 Using signWith (raw public key):', signWith);
-        console.log('   Address format:', cosmosWalletAccount.addressFormat);
-        console.log('   Length:', signWith.length);
-        console.log('   Is hex:', /^[0-9a-fA-F]+$/.test(signWith));
+        // Use the uncompressed public key (raw key) for Cosmos signing
+        const signWith = cosmosUncompressedAccount.address || '';
+
+        console.log('✅ Found all required accounts:');
+        console.log('   Cosmos signWith (UNCOMPRESSED):', signWith.slice(0, 20) + '...');
+        console.log('   Ethereum address:', ethereumAccount.address);
+        console.log('   Ethereum account object:', JSON.stringify(ethereumAccount, null, 2));
 
         // Initialize Xion wallet with SUB-ORG ID (not root org)
         const xionWallet = await TurnkeyDirectWallet.init({
           config: {
-            client: httpClient,
+            client: httpClient as any,
             organizationId: actualOrgId, // ← Use sub-org ID!
             signWith,
           },
@@ -201,7 +217,7 @@ export default function Home() {
         // Initialize Noble wallet with SUB-ORG ID (not root org)
         const nobleWallet = await TurnkeyDirectWallet.init({
           config: {
-            client: httpClient,
+            client: httpClient as any,
             organizationId: actualOrgId, // ← Use sub-org ID!
             signWith,
           },
@@ -224,91 +240,37 @@ export default function Home() {
         );
         setNobleSigningClient(nobleClient);
 
-        // Initialize Solana signer with SUB-ORG ID
-        const solanaTurnkeySigner = new TurnkeySigner({
-          organizationId: actualOrgId, // ← Use sub-org ID!
-          client: httpClient,
-        });
-        setSolanaSigner(solanaTurnkeySigner);
-
-        // Get or create Solana wallet (client-side with passkey auth)
-        let solanaWalletAddress = '';
+        // Initialize Base wallet with Turnkey using the Ethereum account
         try {
+          console.log('🔧 Initializing Base wallet...');
+          const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+          const baseClient = await createTurnkeyBaseClient(
+            { apiClient: () => httpClient } as any,
+            actualOrgId,
+            ethereumAccount.walletAccountId, // Use the wallet account ID
+            ethereumAccount.address, // Ethereum address
+            network as 'mainnet' | 'sepolia'
+          );
 
-          console.log('📝 Getting or creating Solana wallet...');
-          console.log('   Root org ID:', rootOrgId);
-          console.log('   Actual org ID:', actualOrgId);
-
-          // First, check if we already have a Solana wallet
-          const walletsResponse = await httpClient.getWallets({
-            organizationId: actualOrgId,
-          });
-
-          // Look for existing Solana wallet
-          const wallets = walletsResponse.wallets || [];
-
-          for (const wallet of wallets) {
-            const accountsResponse = await httpClient.getWalletAccounts({
-              organizationId: actualOrgId,
-              walletId: wallet.walletId,
-            });
-
-            const solanaAccount = accountsResponse.accounts?.find(
-              (account: any) => account.addressFormat === 'ADDRESS_FORMAT_SOLANA'
-            );
-
-            if (solanaAccount?.address) {
-              console.log('✅ Found existing Solana wallet');
-              console.log('   Solana address:', solanaAccount.address);
-              console.log('   Solana address length:', solanaAccount.address.length);
-              solanaWalletAddress = solanaAccount.address;
-              break;
-            }
-          }
-
-          // If no Solana wallet found, create one
-          if (!solanaWalletAddress) {
-            console.log('📝 Creating new Solana wallet...');
-
-            const createWalletResult = await httpClient.createWallet({
-              organizationId: actualOrgId,
-              walletName: 'Solana Wallet',
-              accounts: [
-                {
-                  curve: 'CURVE_ED25519',
-                  pathFormat: 'PATH_FORMAT_BIP32',
-                  path: "m/44'/501'/0'/0'",
-                  addressFormat: 'ADDRESS_FORMAT_SOLANA',
-                },
-              ],
-            });
-
-            solanaWalletAddress = createWalletResult.addresses?.[0] || '';
-            console.log('✅ Created Solana wallet:', solanaWalletAddress);
-          }
-
-          console.log('📍 Setting Solana address:', solanaWalletAddress);
-          setSolanaAddress(solanaWalletAddress);
-
-          // Verify state was set
-          console.log('✅ Solana address state updated');
+          setBaseAddress(ethereumAccount.address);
+          setBaseWalletClient(baseClient);
+          console.log('✅ Base wallet client created');
         } catch (error) {
-          console.error('❌ Failed to get/create Solana wallet:', error);
-          console.warn('⚠️ Continuing without Solana');
-          setSolanaAddress('');
+          console.error('❌ Failed to create Base wallet:', error);
+          throw error; // Re-throw since we expect this to work now
         }
 
         console.log('✅ All signing clients initialized');
         console.log('📊 Final addresses:', {
           xion: xionAddr,
           noble: convertXionToNoble(xionAddr || ''),
-          solana: solanaWalletAddress
+          base: ethereumAccount.address
         });
       } catch (error) {
         console.error('Failed to initialize signing clients:', error);
         setXionSigningClient(null);
         setNobleSigningClient(null);
-        setSolanaSigner(null);
+        setBaseWalletClient(null);
       }
     };
 
@@ -351,39 +313,39 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [nobleAddress, nobleQueryClient]);
 
-  // Fetch Solana USDC balance
+  // Fetch Base USDC balance
   useEffect(() => {
-    const fetchSolanaBalance = async () => {
-      if (!solanaAddress) return;
+    const fetchBaseBalance = async () => {
+      if (!baseAddress) return;
 
       try {
-        const publicKey = new PublicKey(solanaAddress);
-        const balance = await getSolanaUSDCBalance(solanaConnection, publicKey);
-        setSolanaUsdcBalance(balance);
+        const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+        const balance = await getBaseUSDCBalance(baseAddress, network as 'mainnet' | 'sepolia');
+        setBaseUsdcBalance(balance);
       } catch (error) {
-        console.error('Error fetching Solana balance:', error);
+        console.error('Error fetching Base balance:', error);
       }
     };
 
-    fetchSolanaBalance();
-    const interval = setInterval(fetchSolanaBalance, 10000);
+    fetchBaseBalance();
+    const interval = setInterval(fetchBaseBalance, 10000);
     return () => clearInterval(interval);
-  }, [solanaAddress, solanaConnection]);
+  }, [baseAddress]);
 
   // CCTP Transfer Handler
   const handleCCTPTransfer = async () => {
     console.log('🚀 Starting CCTP transfer...');
-    console.log('   Addresses:', { xionAddress, nobleAddress, solanaAddress });
+    console.log('   Addresses:', { xionAddress, nobleAddress, baseAddress });
     console.log('   Clients:', {
       xionSigning: !!xionSigningClient,
       nobleSigning: !!nobleSigningClient,
-      solanaSigner: !!solanaSigner,
+      baseWalletClient: !!baseWalletClient,
       xionQuery: !!xionQueryClient,
       nobleQuery: !!nobleQueryClient
     });
 
-    if (!xionAddress || !nobleAddress || !solanaAddress) {
-      setError('Please connect Turnkey wallet (Xion, Noble, and Solana addresses required)');
+    if (!xionAddress || !nobleAddress || !baseAddress) {
+      setError('Please connect Turnkey wallet (Xion, Noble, and Base addresses required)');
       return;
     }
 
@@ -427,18 +389,14 @@ export default function Home() {
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
-      // Calculate Solana USDC Associated Token Account (ATA) address
-      // CRITICAL: CCTP must mint to the token account, not the wallet address
-      const solanaPublicKey = new PublicKey(solanaAddress);
-      const usdcMint = new PublicKey(SOLANA_USDC_MINT);
-      const solanaUsdcAta = await getAssociatedTokenAddress(usdcMint, solanaPublicKey);
-      const solanaAtaBytes = '0x' + Buffer.from(solanaUsdcAta.toBytes()).toString('hex');
+      // Format Base address for CCTP (pad to 32 bytes)
+      const baseAddressBytes = formatAddressForCCTP(baseAddress);
+      const baseAddressHex = '0x' + Buffer.from(baseAddressBytes).toString('hex');
 
-      console.log('🎯 Solana CCTP destination:', {
-        wallet: solanaAddress,
-        usdcMint: SOLANA_USDC_MINT,
-        ata: solanaUsdcAta.toBase58(),
-        ataBytes: solanaAtaBytes
+      console.log('🎯 Base CCTP destination:', {
+        wallet: baseAddress,
+        addressBytes: baseAddressHex,
+        domain: BASE_CONFIG.CCTP_DOMAIN
       });
 
       // Reserve gas fee from actual Noble balance
@@ -456,16 +414,13 @@ export default function Home() {
         burnUSDC: (burnAmountFromNoble / 1000000).toFixed(6)
       });
 
-      // Use Coinflow's trusted relayer for Solana destination
-      const SOLANA_RELAYER = '0xbac7599ecaaab190705ffff99f0625f33a4caf6b3ccccd0fa6cc0cc988e31ce1';
-
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient!,
         nobleAddress,
         burnAmountFromNoble.toString(),
-        SOLANA_CONFIG.CCTP_DOMAIN, // Domain 5 for Solana
-        solanaAtaBytes, // Use ATA address, not wallet address
-        SOLANA_RELAYER // Coinflow's relayer will complete the mint
+        BASE_CONFIG.CCTP_DOMAIN, // Domain 6 for Base
+        baseAddressHex, // Base address (padded to 32 bytes)
+        undefined // No relayer needed - we'll mint manually
       );
       setTxHashes(prev => ({ ...prev, nobleBurn: burnResult.transactionHash }));
 
@@ -486,27 +441,23 @@ export default function Home() {
         throw new Error('Failed to retrieve attestation or message bytes');
       }
 
-      // Step 4: Mint USDC on Solana
+      // Step 4: Mint USDC on Base
       setCctpStep('mint');
-      setStatusMessage('Minting USDC on Solana...');
+      setStatusMessage('Minting USDC on Base...');
 
-      if (!solanaSigner) {
-        throw new Error('Solana signer not initialized');
+      if (!baseWalletClient) {
+        throw new Error('Base wallet client not initialized');
       }
 
-      const mintResult = await mintUSDCOnSolanaWithTurnkey(
-        solanaConnection,
-        solanaSigner,
-        solanaAddress,
-        messageHex,
-        attestationHex
+      const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+      const mintTxHash = await mintUSDCOnBaseWithTurnkey(
+        baseWalletClient,
+        new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
+        attestationHex,
+        network as 'mainnet' | 'sepolia'
       );
 
-      if (!mintResult.success) {
-        throw new Error('Failed to mint USDC on Solana');
-      }
-
-      setTxHashes(prev => ({ ...prev, solanaMint: mintResult.transactionHash }));
+      setTxHashes(prev => ({ ...prev, baseMint: mintTxHash }));
 
       // Success!
       setCctpStep('complete');
@@ -543,7 +494,7 @@ export default function Home() {
         receiver: nobleAddress,
         timeoutHeight: undefined,
         timeoutTimestamp: BigInt(Date.now() + 10 * 60 * 1000) * BigInt(1000000),
-        memo: 'CCTP transfer to Solana',
+        memo: 'CCTP transfer to Base',
       }),
     };
 
@@ -663,10 +614,10 @@ export default function Home() {
     }
   };
 
-  // CCTP Burn Noble → Solana (skip Xion step)
-  const burnNobleToSolana = async (inputAmount?: string) => {
-    if (!nobleAddress || !solanaAddress || !nobleSigningClient || !solanaSigner) {
-      setError('Noble or Solana signing client not available');
+  // CCTP Burn Noble → Base (skip Xion step)
+  const burnNobleToBase = async (inputAmount?: string) => {
+    if (!nobleAddress || !baseAddress || !nobleSigningClient || !baseWalletClient) {
+      setError('Noble or Base signing client not available');
       return;
     }
 
@@ -679,18 +630,14 @@ export default function Home() {
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
-      // Calculate Solana USDC Associated Token Account (ATA) address
-      // CRITICAL: CCTP must mint to the token account, not the wallet address
-      const solanaPublicKey = new PublicKey(solanaAddress);
-      const usdcMint = new PublicKey(SOLANA_USDC_MINT);
-      const solanaUsdcAta = await getAssociatedTokenAddress(usdcMint, solanaPublicKey);
-      const solanaAtaBytes = '0x' + Buffer.from(solanaUsdcAta.toBytes()).toString('hex');
+      // Format Base address for CCTP (pad to 32 bytes)
+      const baseAddressBytes = formatAddressForCCTP(baseAddress);
+      const baseAddressHex = '0x' + Buffer.from(baseAddressBytes).toString('hex');
 
-      console.log('🎯 Solana CCTP destination:', {
-        wallet: solanaAddress,
-        usdcMint: SOLANA_USDC_MINT,
-        ata: solanaUsdcAta.toBase58(),
-        ataBytes: solanaAtaBytes
+      console.log('🎯 Base CCTP destination:', {
+        wallet: baseAddress,
+        addressBytes: baseAddressHex,
+        domain: BASE_CONFIG.CCTP_DOMAIN
       });
 
       // Query fresh Noble balance before burning
@@ -728,67 +675,477 @@ export default function Home() {
         burnUSDC: (burnAmount / 1000000).toFixed(6)
       });
 
-      // Use Coinflow's trusted relayer for Solana destination
-      const SOLANA_RELAYER = '0xbac7599ecaaab190705ffff99f0625f33a4caf6b3ccccd0fa6cc0cc988e31ce1';
-
       const burnResult = await burnUSDCOnNoble(
         nobleSigningClient,
         nobleAddress,
         burnAmountString,
-        SOLANA_CONFIG.CCTP_DOMAIN,
-        solanaAtaBytes, // Use ATA address, not wallet address
-        SOLANA_RELAYER // Coinflow's relayer will complete the mint
+        BASE_CONFIG.CCTP_DOMAIN, // Domain 6 for Base
+        baseAddressHex, // Base address (padded to 32 bytes)
+        undefined // No relayer - we'll mint manually
       );
       setTxHashes({ nobleBurn: burnResult.transactionHash });
 
-      // When using a relayer (MsgDepositForBurnWithCaller), the relayer handles
-      // attestation and minting automatically. We just wait for it to complete.
-      setCctpStep('mint');
-      setStatusMessage('Waiting for Coinflow relayer to complete the mint on Solana (this may take 2-3 minutes)...');
+      // Step 2: Get Circle attestation
+      setCctpStep('attest');
+      setStatusMessage('Fetching attestation from Circle (this may take 2-3 minutes)...');
 
-      console.log('🔄 Relayer-based transfer initiated. Coinflow will handle attestation and minting.');
-      console.log('   Burn TX:', burnResult.transactionHash);
-      console.log('   Monitor your Solana balance for the incoming USDC.');
+      const { attestation, message } = await getAttestationSignature(
+        burnResult.transactionHash,
+        240, // max attempts (20 minutes)
+        5000 // poll every 5 seconds
+      );
 
-      // Poll Solana balance to detect when funds arrive
-      const initialBalance = solanaUsdcBalance;
-      const startTime = Date.now();
-      const maxWaitTime = 5 * 60 * 1000; // 5 minutes max
+      const attestationHex = normalizeAttestation(attestation);
+      const messageHex = normalizeMessageBytes(burnResult.messageBytes || message);
 
-      while (Date.now() - startTime < maxWaitTime) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5 seconds
-
-        // Fetch current balance
-        const publicKey = new PublicKey(solanaAddress);
-        const currentBalance = await getSolanaUSDCBalance(solanaConnection, publicKey);
-
-        console.log('💰 Checking Solana balance:', {
-          initial: initialBalance,
-          current: currentBalance,
-          elapsed: `${Math.floor((Date.now() - startTime) / 1000)}s`
-        });
-
-        if (currentBalance > initialBalance) {
-          console.log('✅ Funds detected on Solana! Transfer complete.');
-          setSolanaUsdcBalance(currentBalance);
-          break;
-        }
+      if (!attestationHex || !messageHex) {
+        throw new Error('Failed to retrieve attestation or message bytes');
       }
+
+      // Step 3: Mint USDC on Base
+      setCctpStep('mint');
+      setStatusMessage('Minting USDC on Base...');
+
+      const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+      const mintTxHash = await mintUSDCOnBaseWithTurnkey(
+        baseWalletClient,
+        new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
+        attestationHex,
+        network as 'mainnet' | 'sepolia'
+      );
+
+      console.log('✅ Funds minted on Base! TX:', mintTxHash);
 
       // Success!
       setCctpStep('complete');
-      setStatusMessage('CCTP Noble → Solana complete!');
+      setStatusMessage('CCTP Noble → Base complete!');
 
       setTimeout(() => {
         resetFlow();
       }, 5000);
 
     } catch (err: any) {
-      console.error('Noble → Solana CCTP error:', err);
+      console.error('Noble → Base CCTP error:', err);
       setError(err.message || 'CCTP transfer failed');
       setCctpStep('idle');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Session key management
+  const getStoredSessionKey = (walletAddress: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const key = localStorage.getItem(`coinflow-session-key-${walletAddress}`);
+      // Filter out invalid values
+      if (!key || key === 'undefined' || key === 'null') {
+        return null;
+      }
+      return key;
+    } catch (e) {
+      console.error('Failed to get stored session key:', e);
+      return null;
+    }
+  };
+
+  const storeSessionKey = (walletAddress: string, key: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      // Don't store invalid values
+      if (!key || key === 'undefined' || key === 'null') {
+        console.warn('Attempted to store invalid session key:', key);
+        return;
+      }
+      localStorage.setItem(`coinflow-session-key-${walletAddress}`, key);
+    } catch (e) {
+      console.error('Failed to store session key:', e);
+    }
+  };
+
+  const clearStoredSessionKey = (walletAddress: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(`coinflow-session-key-${walletAddress}`);
+      console.log('Cleared stored session key');
+    } catch (e) {
+      console.error('Failed to clear session key:', e);
+    }
+  };
+
+  // Get or create session key
+  const getSessionKey = async (): Promise<string> => {
+    if (!baseAddress) throw new Error('Base address not available');
+
+    // Clear state if it's invalid
+    if (sessionKey === 'undefined' || sessionKey === 'null') {
+      setSessionKey(null);
+    }
+
+    // Check for existing session key
+    let currentKey = sessionKey || getStoredSessionKey(baseAddress);
+    if (currentKey && currentKey !== 'undefined' && currentKey !== 'null') {
+      console.log('Using existing session key:', currentKey.slice(0, 20) + '...');
+      setSessionKey(currentKey);
+      return currentKey;
+    }
+
+    // Clear any invalid stored keys
+    if (baseAddress) {
+      clearStoredSessionKey(baseAddress);
+    }
+
+    // Generate new session key
+    console.log('Generating new session key for wallet:', baseAddress);
+    const response = await fetch(`/api/coinflow/session-key?wallet=${encodeURIComponent(baseAddress)}`);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Session key API error:', errorData);
+      throw new Error(errorData.error || 'Failed to get session key');
+    }
+
+    const data = await response.json();
+    console.log('Session key API response:', data);
+
+    const newKey = data.sessionKey || data.session_key || data.key;
+
+    if (!newKey) {
+      console.error('No session key in response. Full response:', data);
+      throw new Error('Session key not found in response');
+    }
+
+    storeSessionKey(baseAddress, newKey);
+    setSessionKey(newKey);
+    console.log('✅ Session key generated:', newKey.slice(0, 20) + '...');
+
+    return newKey;
+  };
+
+  // Load withdrawer details (bank accounts)
+  const loadWithdrawerDetails = async () => {
+    if (!baseAddress) {
+      console.log('⚠️ Cannot load withdrawer details: no base address');
+      return;
+    }
+
+    try {
+      const key = await getSessionKey();
+      console.log('📋 Loading withdrawer details...');
+      console.log('   Wallet:', baseAddress);
+      console.log('   Session key:', key.slice(0, 20) + '...');
+
+      const url = `/api/coinflow/withdrawer?wallet=${encodeURIComponent(baseAddress)}&sessionKey=${encodeURIComponent(key)}`;
+      console.log('   Fetching:', url);
+
+      const response = await fetch(url);
+
+      console.log('   Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Withdrawer API error:', errorData);
+        throw new Error(`Failed to load withdrawer details: ${JSON.stringify(errorData)}`);
+      }
+
+      const data = await response.json();
+      setWithdrawerDetails(data);
+      console.log('✅ Withdrawer details loaded:', data);
+
+      // Auto-select first bank account if available
+      if (data.withdrawer?.bankAccounts?.length > 0) {
+        setSelectedBankAccount(data.withdrawer.bankAccounts[0].token);
+        console.log('✅ Auto-selected bank account:', data.withdrawer.bankAccounts[0].name);
+      } else {
+        console.log('⚠️ No bank accounts found in withdrawer details');
+      }
+    } catch (err: any) {
+      console.error('❌ Failed to load withdrawer details:', err);
+      console.error('   Error message:', err.message);
+      // Don't set error state - they might just not have completed KYC yet
+    }
+  };
+
+  // Load withdrawer details when baseAddress changes and after a delay (to allow session key to load)
+  useEffect(() => {
+    if (baseAddress) {
+      console.log('🔄 Base address detected, will load withdrawer details...');
+      // Add a small delay to ensure session key is available
+      const timer = setTimeout(() => {
+        loadWithdrawerDetails();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [baseAddress]);
+
+  // Get withdrawal quote from Coinflow
+  const getQuote = async (amount: string) => {
+    if (!amount || !baseAddress) return;
+
+    try {
+      setGettingQuote(true);
+      const key = await getSessionKey();
+
+      const params = new URLSearchParams({
+        amount: amount,
+        token: BASE_USDC_ADDRESS,
+        wallet: baseAddress,
+        merchantId: COINFLOW_MERCHANT_ID(),
+        usePermit: 'false'
+      });
+
+      const response = await fetch(`https://api${process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet' ? '' : '-sandbox'}.coinflow.cash/api/withdraw/quote?${params}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-coinflow-auth-session-key': key,
+          'x-coinflow-auth-blockchain': 'base'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get quote');
+      }
+
+      const quoteData = await response.json();
+      setQuote(quoteData);
+      console.log('💰 Withdrawal quote:', quoteData);
+    } catch (error) {
+      console.error('Error getting quote:', error);
+      setQuote(null);
+    } finally {
+      setGettingQuote(false);
+    }
+  };
+
+  // Handle withdrawal
+  const handleWithdraw = async () => {
+    if (!baseAddress || !baseWalletClient || !withdrawAmount || !selectedBankAccount) {
+      setError('Missing required withdrawal parameters');
+      return;
+    }
+
+    setWithdrawing(true);
+    setError('');
+    setWithdrawalTxHash('');
+
+    try {
+      const key = await getSessionKey();
+
+      // Step 1: Get withdrawal transaction details from Coinflow
+      setStatusMessage('Getting withdrawal details from Coinflow...');
+      console.log('📤 Step 1: Getting withdrawal transaction details');
+
+      const txResponse = await fetch('/api/coinflow/withdraw-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: baseAddress,
+          sessionKey: key,
+          bankAccountToken: selectedBankAccount,
+          amount: withdrawAmount,
+          speed: selectedSpeed
+        })
+      });
+
+      if (!txResponse.ok) {
+        const error = await txResponse.json();
+        throw new Error(error.error || 'Failed to get withdrawal transaction details');
+      }
+
+      const txData = await txResponse.json();
+      console.log('✅ Withdrawal transaction details:', txData);
+
+      // Step 2: Execute USDC transfer on Base
+      setStatusMessage('Sending USDC transaction on Base...');
+      console.log('📤 Step 2: Executing USDC transfer on Base');
+      console.log('   USDC Contract:', BASE_USDC_ADDRESS);
+      console.log('   To:', txData.address);
+      console.log('   Amount (in smallest unit):', txData.amount);
+
+      // Transfer USDC using ERC-20 transfer method
+      const hash = await baseWalletClient.writeContract({
+        address: BASE_USDC_ADDRESS as `0x${string}`,
+        abi: [
+          {
+            name: 'transfer',
+            type: 'function',
+            stateMutability: 'nonpayable',
+            inputs: [
+              { name: 'to', type: 'address' },
+              { name: 'amount', type: 'uint256' }
+            ],
+            outputs: [{ name: '', type: 'bool' }]
+          }
+        ],
+        functionName: 'transfer',
+        args: [txData.address as `0x${string}`, BigInt(txData.amount)],
+        chain: baseWalletClient.chain,
+        account: baseWalletClient.account!,
+      });
+
+      console.log('✅ USDC transfer transaction sent:', hash);
+      setWithdrawalTxHash(hash);
+
+      // Step 3: Submit transaction hash to Coinflow
+      setStatusMessage('Submitting transaction to Coinflow...');
+      console.log('📤 Step 3: Submitting transaction hash to Coinflow');
+
+      const submitResponse = await fetch('/api/coinflow/submit-hash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: baseAddress,
+          sessionKey: key,
+          hash
+        })
+      });
+
+      if (!submitResponse.ok) {
+        const error = await submitResponse.json();
+        throw new Error(error.error || 'Failed to submit transaction hash');
+      }
+
+      const submitData = await submitResponse.json();
+      console.log('✅ Transaction hash submitted:', submitData);
+
+      // Success!
+      setStatusMessage('✅ Withdrawal initiated successfully! Funds will be in your bank account within 1-3 business days.');
+      setWithdrawAmount('');
+
+      // Refresh balance
+      setTimeout(() => {
+        setStatusMessage('');
+      }, 10000);
+
+    } catch (err: any) {
+      console.error('❌ Withdrawal error:', err);
+      setError(err.message || 'Withdrawal failed');
+      setStatusMessage('');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  // Handle gasless withdrawal using EIP-712 permit signing
+  const handleWithdrawGasless = async () => {
+    if (!baseAddress || !baseWalletClient || !withdrawAmount || !selectedBankAccount) {
+      setError('Missing required withdrawal parameters');
+      return;
+    }
+
+    setWithdrawing(true);
+    setError('');
+    setWithdrawalTxHash('');
+
+    try {
+      const key = await getSessionKey();
+
+      // Step 1: Get EIP-712 permit message from Coinflow
+      setStatusMessage('Getting permit message from Coinflow...');
+      console.log('📤 Step 1: Getting EIP-712 permit message');
+
+      const messageResponse = await fetch('/api/coinflow/evm-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: baseAddress,
+          sessionKey: key,
+          bankAccountToken: selectedBankAccount,
+          amount: withdrawAmount,
+          speed: selectedSpeed
+        })
+      });
+
+      if (!messageResponse.ok) {
+        const error = await messageResponse.json();
+        throw new Error(error.error || 'Failed to get EIP-712 message');
+      }
+
+      const messageData = await messageResponse.json();
+      console.log('✅ EIP-712 message received:', messageData);
+
+      // Step 2: Sign the EIP-712 message with Turnkey wallet
+      setStatusMessage('Please sign the permit message...');
+      console.log('📤 Step 2: Signing EIP-712 message with Turnkey');
+
+      // The message should be in EIP-712 typed data format
+      const signature = await baseWalletClient.signTypedData({
+        account: baseWalletClient.account!,
+        domain: messageData.domain,
+        types: messageData.types,
+        primaryType: messageData.primaryType,
+        message: messageData.message,
+      });
+
+      console.log('✅ Message signed:', signature);
+
+      // Step 3: Submit the signed permit to Coinflow for gasless withdrawal
+      setStatusMessage('Submitting gasless transaction to Coinflow...');
+      console.log('📤 Step 3: Submitting gasless transaction');
+
+      const submitResponse = await fetch('/api/coinflow/gasless-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: baseAddress,
+          sessionKey: key,
+          signature,
+          message: messageData
+        })
+      });
+
+      if (!submitResponse.ok) {
+        const error = await submitResponse.json();
+        throw new Error(error.error || 'Failed to submit gasless transaction');
+      }
+
+      const submitData = await submitResponse.json();
+      console.log('✅ Gasless transaction submitted:', submitData);
+
+      // The gasless transaction should return a transaction hash
+      if (submitData.transactionHash || submitData.hash) {
+        setWithdrawalTxHash(submitData.transactionHash || submitData.hash);
+      }
+
+      // Success!
+      setStatusMessage('✅ Gasless withdrawal initiated successfully! No gas fees required. Funds will be in your bank account within 1-3 business days.');
+      setWithdrawAmount('');
+      setQuote(null);
+
+      // Refresh balance
+      setTimeout(() => {
+        setStatusMessage('');
+      }, 10000);
+
+    } catch (err: any) {
+      console.error('❌ Gasless withdrawal error:', err);
+      setError(err.message || 'Gasless withdrawal failed');
+      setStatusMessage('');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  // Redirect to Coinflow for bank account linking
+  const handleBankAccountLink = async () => {
+    if (!baseAddress) {
+      setError('Base address not available');
+      return;
+    }
+
+    try {
+      const key = await getSessionKey();
+      const baseUrl = `${COINFLOW_BASE_URL}/base/withdraw/${COINFLOW_MERCHANT_ID()}`;
+      const url = new URL(baseUrl);
+      url.searchParams.set('sessionKey', key);
+      url.searchParams.set('bankAccountLinkRedirect', window.location.origin);
+
+      console.log('Redirecting to Coinflow for bank account linking:', url.toString());
+      window.location.href = url.toString();
+    } catch (err: any) {
+      console.error('Failed to initiate bank account linking:', err);
+      setError(err.message || 'Failed to initiate bank account linking');
     }
   };
 
@@ -818,7 +1175,7 @@ export default function Home() {
     <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-5xl font-bold text-center mb-2 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-          Xion → Solana CCTP
+          Xion → Base CCTP
         </h1>
         <p className="text-center text-gray-600 mb-8">
           Bridge USDC via Noble + Withdraw with Coinflow
@@ -859,17 +1216,17 @@ export default function Home() {
             )}
           </div>
 
-          {/* Solana - derived from Turnkey */}
-          {solanaAddress && (
+          {/* Base - derived from Turnkey */}
+          {baseAddress && (
             <div className="mt-4 p-3 bg-purple-50 rounded-lg">
-              <div className="text-sm font-medium text-gray-700">Solana (Turnkey)</div>
+              <div className="text-sm font-medium text-gray-700">Base (Turnkey)</div>
               <div className="text-xs text-gray-600 mt-1 break-all font-mono">
-                {solanaAddress}
+                {baseAddress}
               </div>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(solanaAddress);
-                  setStatusMessage('Solana address copied!');
+                  navigator.clipboard.writeText(baseAddress);
+                  setStatusMessage('Base address copied!');
                   setTimeout(() => setStatusMessage(''), 2000);
                 }}
                 className="mt-2 text-xs text-purple-600 hover:text-purple-800"
@@ -892,7 +1249,7 @@ export default function Home() {
         </div>
 
         {/* Balances */}
-        {(xionAddress || solanaAddress) && (
+        {(xionAddress || baseAddress) && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-2xl font-semibold mb-4">Balances</h2>
             <div className="grid grid-cols-3 gap-4">
@@ -926,32 +1283,32 @@ export default function Home() {
                           ← IBC to Xion
                         </button>
                       </div>
-                      {/* CCTP to Solana */}
+                      {/* CCTP to Base */}
                       <div>
                         <input
                           type="number"
-                          value={nobleToSolanaAmount}
-                          onChange={(e) => setNobleToSolanaAmount(e.target.value)}
+                          value={nobleToBaseAmount}
+                          onChange={(e) => setNobleToBaseAmount(e.target.value)}
                           placeholder="Amount (or leave empty for all)"
-                          disabled={loading || !solanaAddress}
+                          disabled={loading || !baseAddress}
                           className="w-full text-xs px-2 py-1 border border-gray-300 rounded mb-1"
                         />
                         <button
-                          onClick={() => burnNobleToSolana(nobleToSolanaAmount)}
-                          disabled={loading || !solanaAddress}
+                          onClick={() => burnNobleToBase(nobleToBaseAmount)}
+                          disabled={loading || !baseAddress}
                           className="w-full text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
                         >
-                          → CCTP to Solana
+                          → CCTP to Base
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
               )}
-              {solanaAddress && (
+              {baseAddress && (
                 <div className="p-4 bg-purple-50 rounded-lg">
-                  <div className="text-sm text-gray-600">Solana USDC</div>
-                  <div className="text-2xl font-bold">${solanaUsdcBalance.toFixed(2)}</div>
+                  <div className="text-sm text-gray-600">Base USDC</div>
+                  <div className="text-2xl font-bold">${baseUsdcBalance.toFixed(2)}</div>
                 </div>
               )}
             </div>
@@ -1026,9 +1383,9 @@ export default function Home() {
                     <span className="font-medium">Burn:</span> {txHashes.nobleBurn}
                   </div>
                 )}
-                {txHashes.solanaMint && (
+                {txHashes.baseMint && (
                   <div className="break-all">
-                    <span className="font-medium">Mint:</span> {txHashes.solanaMint}
+                    <span className="font-medium">Mint:</span> {txHashes.baseMint}
                   </div>
                 )}
               </div>
@@ -1038,7 +1395,7 @@ export default function Home() {
             <div className="flex gap-4">
               <button
                 onClick={handleCCTPTransfer}
-                disabled={loading || cctpStep !== 'idle' || !xionAddress || !solanaAddress}
+                disabled={loading || cctpStep !== 'idle' || !xionAddress || !baseAddress}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
               >
                 {loading ? 'Processing...' : 'Start CCTP Transfer'}
@@ -1055,33 +1412,205 @@ export default function Home() {
           </div>
         )}
 
-        {/* Coinflow Withdrawal Widget */}
-        {cctpStep === 'complete' && solanaAddress && solanaSigner && (
+        {/* Coinflow Withdrawal Section */}
+        {baseAddress && baseUsdcBalance > 0 && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-2xl font-semibold mb-4">Withdraw to Bank Account</h2>
             <p className="text-sm text-gray-600 mb-4">
-              USDC has been successfully bridged to Solana via CCTP!
-              <br />
-              Use the Coinflow widget below to withdraw to your bank account.
+              {cctpStep === 'complete' && 'USDC has been successfully bridged to Base via CCTP!'}
+              {cctpStep !== 'complete' && `You have $${baseUsdcBalance.toFixed(2)} USDC on Base.`}
             </p>
-            {/* @ts-ignore - Coinflow expects specific wallet interface */}
-            <CoinflowWithdraw
-              wallet={{
-                publicKey: new PublicKey(solanaAddress),
-                signTransaction: async (tx: any) => await solanaSigner.signTransaction(tx, solanaAddress),
-                signAllTransactions: async (txs: any[]) => await Promise.all(
-                  txs.map(tx => solanaSigner.signTransaction(tx, solanaAddress))
-                ),
-              } as any}
-              merchantId={COINFLOW_MERCHANT_ID}
-              env={process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet' ? 'prod' : 'sandbox'}
-              connection={solanaConnection}
-              onSuccess={(data: any) => {
-                console.log('Withdrawal successful:', data);
-                alert('Withdrawal initiated successfully!');
-                resetFlow();
-              }}
-            />
+
+            {/* Show bank accounts if available */}
+            {withdrawerDetails?.withdrawer?.bankAccounts?.length > 0 ? (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-medium text-gray-700">Your Bank Accounts</h3>
+                  <button
+                    onClick={loadWithdrawerDetails}
+                    className="text-xs text-indigo-600 hover:text-indigo-800"
+                  >
+                    🔄 Refresh
+                  </button>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Bank Account
+                  </label>
+                  <select
+                    value={selectedBankAccount}
+                    onChange={(e) => setSelectedBankAccount(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  >
+                    {withdrawerDetails.withdrawer.bankAccounts.map((account: any) => (
+                      <option key={account.token} value={account.token}>
+                        {account.name} - {account.mask}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Amount (USDC)
+                  </label>
+                  <input
+                    type="number"
+                    value={withdrawAmount}
+                    onChange={async (e) => {
+                      const value = e.target.value;
+                      setWithdrawAmount(value);
+                      if (value && parseFloat(value) > 0) {
+                        await getQuote(value);
+                      } else {
+                        setQuote(null);
+                      }
+                    }}
+                    max={baseUsdcBalance}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Enter amount"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Available: ${baseUsdcBalance.toFixed(2)} USDC
+                  </p>
+                </div>
+
+                {gettingQuote && (
+                  <div className="mb-4 text-sm text-gray-500">
+                    Getting quote...
+                  </div>
+                )}
+
+                {quote && (
+                  <div className="mb-4 space-y-3">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Select withdrawal speed:</div>
+
+                    {/* Standard ACH */}
+                    <div
+                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                        selectedSpeed === 'standard'
+                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
+                          : 'hover:bg-gray-50 border-gray-300'
+                      }`}
+                      onClick={() => setSelectedSpeed('standard')}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-medium">Standard ACH (2-3 business days)</span>
+                        <span className="text-green-600 font-medium">
+                          ${(quote.standard.finalSettlement.cents / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Fee: ${(quote.standard.fee.cents / 100).toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* ASAP */}
+                    <div
+                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                        selectedSpeed === 'asap'
+                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
+                          : 'hover:bg-gray-50 border-gray-300'
+                      }`}
+                      onClick={() => setSelectedSpeed('asap')}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-medium">ASAP (Minutes)</span>
+                        <span className="text-green-600 font-medium">
+                          ${(quote.asap.finalSettlement.cents / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Fee: ${(quote.asap.fee.cents / 100).toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Same Day ACH */}
+                    <div
+                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                        selectedSpeed === 'same_day'
+                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
+                          : 'hover:bg-gray-50 border-gray-300'
+                      }`}
+                      onClick={() => setSelectedSpeed('same_day')}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-medium">Same Day ACH</span>
+                        <span className="text-green-600 font-medium">
+                          ${(quote.same_day.finalSettlement.cents / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Fee: ${(quote.same_day.fee.cents / 100).toFixed(2)}
+                      </div>
+                    </div>
+
+                    {quote.gasFees?.gasFees?.cents > 0 && (
+                      <div className="text-xs text-gray-500 mt-2">
+                        Gas fees: ${(quote.gasFees.gasFees.cents / 100).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-3 mb-4">
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > baseUsdcBalance}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                  >
+                    {withdrawing ? 'Processing...' : `Withdraw (With Gas)`}
+                  </button>
+                  <button
+                    onClick={handleWithdrawGasless}
+                    disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > baseUsdcBalance}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                  >
+                    {withdrawing ? 'Processing...' : `Gasless Withdraw ⚡`}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600 mb-4 text-center">
+                  💡 Gasless withdrawal uses EIP-712 permit signing - no Base gas fees required!
+                </p>
+
+                {withdrawalTxHash && (
+                  <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                    <p className="text-xs text-green-800 break-all">
+                      <strong>Transaction Hash:</strong><br />
+                      {withdrawalTxHash}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleBankAccountLink}
+                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+                >
+                  + Add Another Bank Account
+                </button>
+              </div>
+            ) : (
+              <div>
+                <button
+                  onClick={handleBankAccountLink}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-lg transition-colors mb-4"
+                >
+                  Link Bank Account & Withdraw
+                </button>
+
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <p className="text-xs text-blue-800">
+                    <strong>First-time users:</strong> You'll be redirected to Coinflow to:
+                    <br />1. Verify your email
+                    <br />2. Complete KYC verification (identity check)
+                    <br />3. Link your bank account (ACH for US, IBAN for EU, etc.)
+                    <br />4. Set up and complete your withdrawal
+                    <br />
+                    <br />After linking your bank, you'll be returned to this page.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

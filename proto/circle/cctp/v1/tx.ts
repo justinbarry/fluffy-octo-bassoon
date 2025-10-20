@@ -64,7 +64,7 @@ export const MsgDepositForBurn = {
           message.destinationDomain = reader.uint32();
           break;
         case 4:
-          message.mintRecipient = reader.bytes();
+          message.mintRecipient = reader.bytes() as any;
           break;
         case 5:
           message.burnToken = reader.string();
@@ -138,13 +138,13 @@ export const MsgDepositForBurnWithCaller = {
           message.destinationDomain = reader.uint32();
           break;
         case 4:
-          message.mintRecipient = reader.bytes();
+          message.mintRecipient = reader.bytes() as any;
           break;
         case 5:
           message.burnToken = reader.string();
           break;
         case 6:
-          message.destinationCaller = reader.bytes();
+          message.destinationCaller = reader.bytes() as any;
           break;
         default:
           reader.skipType(tag & 7);

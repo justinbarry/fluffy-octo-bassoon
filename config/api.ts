@@ -32,23 +32,28 @@ export const NOBLE_CONFIG = {
   CCTP_DOMAIN: 4 // Noble CCTP domain ID
 } as const;
 
-export const SOLANA_CONFIG = {
-  MAINNET_RPC_URL: "https://solana-mainnet.g.alchemy.com/v2/wM3Tec7EMttWaxoaASS4WX6Un5FQDLJm",
-  DEVNET_RPC_URL: "https://api.devnet.solana.com",
-  // USDC Mint addresses
-  MAINNET_USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  DEVNET_USDC_MINT: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+export const BASE_CONFIG = {
+  MAINNET_RPC_URL: "https://mainnet.base.org",
+  SEPOLIA_RPC_URL: "https://sepolia.base.org",
+  // USDC Token addresses
+  MAINNET_USDC_ADDRESS: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  SEPOLIA_USDC_ADDRESS: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   USDC_DECIMALS: 6,
-  CCTP_DOMAIN: 5, // Solana CCTP domain ID
-  // Solana CCTP Program IDs (mainnet)
+  CCTP_DOMAIN: 6, // Base CCTP domain ID
+  // Base Chain IDs
+  MAINNET_CHAIN_ID: 8453,
+  SEPOLIA_CHAIN_ID: 84532,
+  // Base CCTP Contract Addresses (mainnet)
   MAINNET_CCTP: {
-    MESSAGE_TRANSMITTER: "CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd",
-    TOKEN_MESSENGER_MINTER: "CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3"
+    TOKEN_MESSENGER: "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+    MESSAGE_TRANSMITTER: "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+    TOKEN_MINTER: "0xfd78EE919681417d192449715b2594ab58f5D002"
   },
-  // Solana CCTP Program IDs (devnet)
-  DEVNET_CCTP: {
-    MESSAGE_TRANSMITTER: "CCTPmbSD7gX1bxKPAmg77w8oFzNFpaQiQUWD43TKaecd",
-    TOKEN_MESSENGER_MINTER: "CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3"
+  // Base CCTP Contract Addresses (Sepolia testnet)
+  SEPOLIA_CCTP: {
+    TOKEN_MESSENGER: "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
+    MESSAGE_TRANSMITTER: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275",
+    TOKEN_MINTER: "0xb43db544E2c27092c107639Ad201b3dEfAbcF192"
   }
 } as const;
 
@@ -79,17 +84,21 @@ export const NOBLE_REST_URL: string = (process.env.NEXT_PUBLIC_COINFLOW_ENV === 
   ? NOBLE_CONFIG.MAINNET_REST_URL
   : NOBLE_CONFIG.TESTNET_REST_URL;
 
-export const SOLANA_RPC_URL: string = (process.env.NEXT_PUBLIC_SOLANA_NETWORK === 'mainnet-beta')
-  ? SOLANA_CONFIG.MAINNET_RPC_URL
-  : SOLANA_CONFIG.DEVNET_RPC_URL;
+export const BASE_RPC_URL: string = (process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet')
+  ? BASE_CONFIG.MAINNET_RPC_URL
+  : BASE_CONFIG.SEPOLIA_RPC_URL;
 
-export const SOLANA_USDC_MINT: string = (process.env.NEXT_PUBLIC_SOLANA_NETWORK === 'mainnet-beta')
-  ? SOLANA_CONFIG.MAINNET_USDC_MINT
-  : SOLANA_CONFIG.DEVNET_USDC_MINT;
+export const BASE_USDC_ADDRESS: string = (process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet')
+  ? BASE_CONFIG.MAINNET_USDC_ADDRESS
+  : BASE_CONFIG.SEPOLIA_USDC_ADDRESS;
 
-export const SOLANA_CCTP_CONTRACTS = (process.env.NEXT_PUBLIC_SOLANA_NETWORK === 'mainnet-beta')
-  ? SOLANA_CONFIG.MAINNET_CCTP
-  : SOLANA_CONFIG.DEVNET_CCTP;
+export const BASE_CHAIN_ID: number = (process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet')
+  ? BASE_CONFIG.MAINNET_CHAIN_ID
+  : BASE_CONFIG.SEPOLIA_CHAIN_ID;
+
+export const BASE_CCTP_CONTRACTS = (process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet')
+  ? BASE_CONFIG.MAINNET_CCTP
+  : BASE_CONFIG.SEPOLIA_CCTP;
 
 export const ATTESTATION_API_URL: string = (process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet')
   ? CCTP_CONFIG.MAINNET_ATTESTATION_API
@@ -120,9 +129,9 @@ if (!XION_RPC_URL) {
 if (!NOBLE_RPC_URL) {
   throw new Error('NOBLE_RPC_URL is not defined. Check your NOBLE_CONFIG and COINFLOW_ENV.');
 }
-if (!SOLANA_RPC_URL) {
-  throw new Error('SOLANA_RPC_URL is not defined. Check your SOLANA_CONFIG.');
+if (!BASE_RPC_URL) {
+  throw new Error('BASE_RPC_URL is not defined. Check your BASE_CONFIG.');
 }
-if (!SOLANA_USDC_MINT) {
-  throw new Error('SOLANA_USDC_MINT is not defined. Check your SOLANA_CONFIG.');
+if (!BASE_USDC_ADDRESS) {
+  throw new Error('BASE_USDC_ADDRESS is not defined. Check your BASE_CONFIG.');
 }

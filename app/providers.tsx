@@ -11,14 +11,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     // Enable authentication methods
     auth: {
-      // Create secp256k1 wallet for Cosmos chains (Xion, Noble)
-      // Solana wallet (ed25519) will be created programmatically after login
+      // Create wallets for Cosmos chains (Xion, Noble) and EVM chains (Base)
       createSuborgParams: {
         emailOtpAuth: {
           userName: 'XION User',
           customWallet: {
-            walletName: 'Cosmos Wallet',
+            walletName: 'Multi-Chain Wallet',
             walletAccounts: [
+                // Cosmos chain accounts (Xion, Noble)
                 {
                     curve: "CURVE_SECP256K1",
                     pathFormat: "PATH_FORMAT_BIP32",
@@ -28,13 +28,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 {
                     curve: "CURVE_SECP256K1",
                     pathFormat: "PATH_FORMAT_BIP32",
-                    path: "m/44'/118'/0'/0/0", // Cosmos derivation path
+                    path: "m/44'/118'/0'/0/0",
                     addressFormat: "ADDRESS_FORMAT_COSMOS",
                 },
+                // EVM chain accounts (Base, Polygon, etc.)
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/60'/0'/0/0", // Ethereum derivation path
+                    addressFormat: "ADDRESS_FORMAT_ETHEREUM",
+                },
+                // Solana chain accounts (optional - keep for future use)
                 {
                     curve: "CURVE_ED25519",
                     pathFormat: "PATH_FORMAT_BIP32",
-                    path: "m/44'/501'/0'/0'", // Cosmos derivation path
+                    path: "m/44'/501'/0'/0'",
                     addressFormat: "ADDRESS_FORMAT_SOLANA",
                 }
             ],
@@ -43,8 +51,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         passkeyAuth: {
           userName: 'XION User',
           customWallet: {
-            walletName: 'Cosmos Wallet',
+            walletName: 'Multi-Chain Wallet',
             walletAccounts: [
+                // Cosmos chain accounts (Xion, Noble)
                 {
                     curve: "CURVE_SECP256K1",
                     pathFormat: "PATH_FORMAT_BIP32",
@@ -54,13 +63,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 {
                     curve: "CURVE_SECP256K1",
                     pathFormat: "PATH_FORMAT_BIP32",
-                    path: "m/44'/118'/0'/0/0", // Cosmos derivation path
+                    path: "m/44'/118'/0'/0/0",
                     addressFormat: "ADDRESS_FORMAT_COSMOS",
                 },
+                // EVM chain accounts (Base, Polygon, etc.)
+                {
+                    curve: "CURVE_SECP256K1",
+                    pathFormat: "PATH_FORMAT_BIP32",
+                    path: "m/44'/60'/0'/0/0", // Ethereum derivation path
+                    addressFormat: "ADDRESS_FORMAT_ETHEREUM",
+                },
+                // Solana chain accounts (optional - keep for future use)
                 {
                     curve: "CURVE_ED25519",
                     pathFormat: "PATH_FORMAT_BIP32",
-                    path: "m/44'/501'/0'/0'", // Cosmos derivation path
+                    path: "m/44'/501'/0'/0'",
                     addressFormat: "ADDRESS_FORMAT_SOLANA",
                 }
             ],
