@@ -248,10 +248,26 @@ export function useWithdrawal(
       const responseData = await messageResponse.json();
       console.log('✅ EIP-712 response received:', responseData);
 
+      // Parse the stringified EIP-712 typed data
+      const typedData = typeof responseData.message === 'string'
+        ? JSON.parse(responseData.message)
+        : responseData.message;
+
+      console.log('📝 Parsed EIP-712 typed data:', {
+        hasDomain: !!typedData.domain,
+        hasTypes: !!typedData.types,
+        hasPrimaryType: !!typedData.primaryType,
+        hasMessage: !!typedData.message,
+      });
+
       setStatusMessage('Please sign the permit message...');
-      // Sign the raw message string
-      const signature = await baseSigner.signMessage(responseData.message);
-      console.log('✅ Message signed:', signature.slice(0, 20) + '...');
+      // Use ethers signTypedData for EIP-712
+      const signature = await baseSigner.signTypedData(
+        typedData.domain,
+        typedData.types,
+        typedData.message
+      );
+      console.log('✅ EIP-712 message signed:', signature.slice(0, 20) + '...');
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
       console.log('📤 Step 3: Submitting gasless transaction with:', {
