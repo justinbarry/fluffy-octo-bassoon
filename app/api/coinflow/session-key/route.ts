@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { validateWallet } from '@/utils/apiHelpers';
 import { COINFLOW_URL, getCoinflowHeaders } from '@/utils/coinflowApi';
 
 export async function GET(request: Request) {
@@ -7,9 +8,10 @@ export async function GET(request: Request) {
 
   console.log('Session Key API called with wallet:', wallet);
 
-  if (!wallet) {
-    console.log('No wallet address provided');
-    return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
+  // Validate wallet
+  const validation = validateWallet(wallet);
+  if (!validation.isValid) {
+    return validation.error;
   }
 
   try {
@@ -17,14 +19,14 @@ export async function GET(request: Request) {
     console.log('Calling Coinflow API:', url);
 
     // Use centralized header function but customize for session-key endpoint
-    const headers = getCoinflowHeaders(null, wallet);
+    const headers = getCoinflowHeaders(null, wallet!);
 
     // For session-key, we need the Authorization header in the Authorization field, not x-coinflow-api-key
     const sessionKeyHeaders = {
       'Authorization': headers['x-coinflow-api-key'],
       'Accept': 'application/json',
       'x-coinflow-auth-blockchain': 'base',
-      'x-coinflow-auth-wallet': wallet
+      'x-coinflow-auth-wallet': wallet!
     };
 
     console.log('Headers:', sessionKeyHeaders);

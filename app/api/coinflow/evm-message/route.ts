@@ -1,5 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL, COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
+import { NextRequest } from 'next/server';
+import {
+  validateFields,
+  validateWallet,
+  validateSessionKey,
+  validateBankAccountToken,
+  validateAmount,
+  getCoinflowBaseHeaders,
+  buildWithdrawalRequestBody,
+  makeCoinflowRequest,
+  handleApiError
+} from '@/utils/apiHelpers';
+import { COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
 import { destinations } from '@/config';
 
 export async function POST(request: NextRequest) {
@@ -7,20 +18,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { wallet, sessionKey, bankAccountToken, amount, speed = 'standard' } = body;
 
-    if (!wallet) {
-      return createErrorResponse('Wallet address is required');
-    }
+    // Validate required fields
+    const validation = validateFields([
+      validateWallet(wallet),
+      validateSessionKey(sessionKey),
+      validateBankAccountToken(bankAccountToken),
+      validateAmount(amount)
+    ]);
 
-    if (!sessionKey) {
-      return createErrorResponse('Session key is required');
-    }
-
-    if (!bankAccountToken) {
-      return createErrorResponse('Bank account token is required');
-    }
-
-    if (!amount) {
-      return createErrorResponse('Amount is required');
+    if (!validation.isValid) {
+      return validation.error;
     }
 
     console.log('Getting EVM permit message from Coinflow:', {
@@ -33,33 +40,16 @@ export async function POST(request: NextRequest) {
     });
 
     // Get EVM permit message from Coinflow for gasless withdrawal
-    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm/message`, {
+    return await makeCoinflowRequest({
+      endpoint: '/withdraw/evm/message',
       method: 'POST',
-      headers: {
-        ...getCoinflowHeaders(sessionKey, wallet),
-        'x-coinflow-auth-blockchain': 'base'
-      },
-      body: JSON.stringify({
-        amount: parseFloat(amount),
-        merchantId: COINFLOW_MERCHANT_ID(),
+      headers: getCoinflowBaseHeaders(sessionKey, wallet),
+      body: buildWithdrawalRequestBody({
+        amount,
         speed,
-        account: bankAccountToken,
-        token: {
-          mint: destinations.base.usdcAddress,
-          decimals: destinations.base.usdcDecimals
-        }
+        bankAccountToken
       })
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('Coinflow EVM message error:', error);
-      return createErrorResponse(`Failed to get EVM message: ${JSON.stringify(error)}`, response.status);
-    }
-
-    const data = await response.json();
-    console.log('EVM permit message received:', data);
-    return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error, 'Error getting EVM message');
   }

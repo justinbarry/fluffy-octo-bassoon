@@ -2,12 +2,21 @@ import { useState } from 'react';
 import { TurnkeySigner } from '@turnkey/ethers';
 import { SigningStargateClient } from '@cosmjs/stargate';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { Buffer } from 'buffer';
-import { sources, bridge, destinations } from '@/config';
+import { sources, destinations } from '@/config';
 import { burnUSDCOnNoble } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
 import { mintUSDCOnBaseWithEthers, formatAddressForCCTP } from '@/utils/cctpBase';
+import { buildIBCTransferMessage, buildIBCTransferMessageMicroUnits } from '@/utils/ibc';
+import { formatAddressForCCTPHex } from '@/utils/conversions';
+import {
+  NOBLE_BURN_GAS_BUFFER,
+  NOBLE_IBC_GAS_FEE,
+  NOBLE_GAS_LIMIT,
+  IBC_SETTLEMENT_WAIT_TIME,
+  getNetworkEnvironment,
+  SUCCESS_MESSAGE_DURATION
+} from '@/utils/constants';
 
 type CCTPStep = 'idle' | 'ibc' | 'burn' | 'attest' | 'mint' | 'complete';
 
@@ -54,22 +63,14 @@ export function useCCTPTransfer(
       throw new Error('Xion signing client not available');
     }
 
-    const ibcMsg = {
-      typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
-      value: MsgTransfer.fromPartial({
-        sourcePort: 'transfer',
-        sourceChannel: sources.xion.ibcChannel,
-        token: {
-          denom: sources.xion.usdcDenom,
-          amount: `${parseInt(amount) * 1000000}`,
-        },
-        sender: xionAddress,
-        receiver: nobleAddress,
-        timeoutHeight: undefined,
-        timeoutTimestamp: BigInt(Date.now() + 10 * 60 * 1000) * BigInt(1000000),
-        memo: 'CCTP transfer to Base',
-      }),
-    };
+    const ibcMsg = buildIBCTransferMessage({
+      senderAddress: xionAddress,
+      receiverAddress: nobleAddress,
+      amount,
+      denom: sources.xion.usdcDenom,
+      channel: sources.xion.ibcChannel,
+      memo: 'CCTP transfer to Base'
+    });
 
     const result = await xionSigningClient.signAndBroadcast(
       xionAddress,
@@ -119,7 +120,7 @@ export function useCCTPTransfer(
 
       // Wait for IBC settlement
       setStatusMessage('Waiting for IBC settlement (~8 seconds)...');
-      await new Promise(resolve => setTimeout(resolve, 8000));
+      await new Promise(resolve => setTimeout(resolve, IBC_SETTLEMENT_WAIT_TIME));
 
       // Query actual Noble balance after IBC transfer
       setStatusMessage('Checking Noble balance...');
@@ -130,11 +131,8 @@ export function useCCTPTransfer(
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
-      const baseAddressBytes = formatAddressForCCTP(baseAddress);
-      const baseAddressHex = '0x' + Buffer.from(baseAddressBytes).toString('hex');
-
-      const gasFeeBuffer = 40000; // 0.04 USDC
-      const burnAmountFromNoble = Math.floor(nobleBalanceInMicroUnits - gasFeeBuffer);
+      const baseAddressHex = formatAddressForCCTPHex(baseAddress);
+      const burnAmountFromNoble = Math.floor(nobleBalanceInMicroUnits - NOBLE_BURN_GAS_BUFFER);
 
       if (burnAmountFromNoble <= 0) {
         throw new Error('Insufficient Noble balance after IBC transfer. Need at least 0.04 USDC for gas.');
@@ -175,12 +173,12 @@ export function useCCTPTransfer(
         throw new Error('Base signer not initialized');
       }
 
-      const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+      const network = getNetworkEnvironment();
       const mintTxHash = await mintUSDCOnBaseWithEthers(
         baseSigner,
         new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
         attestationHex,
-        network as 'mainnet' | 'sepolia'
+        network
       );
 
       setTxHashes(prev => ({ ...prev, baseMint: mintTxHash }));
@@ -213,46 +211,37 @@ export function useCCTPTransfer(
 
       const freshNobleBalance = await nobleQueryClient.getBalance(nobleAddress, 'uusdc');
       const balanceInMicroUnits = parseInt(freshNobleBalance.amount);
-      const gasFeeBuffer = 25000;
 
       let transferAmt: number;
       if (inputAmount && parseFloat(inputAmount) > 0) {
         const requestedAmount = Math.floor(parseFloat(inputAmount) * 1000000);
-        if (requestedAmount + gasFeeBuffer > balanceInMicroUnits) {
+        if (requestedAmount + NOBLE_IBC_GAS_FEE > balanceInMicroUnits) {
           throw new Error('Insufficient balance for requested amount plus gas fees.');
         }
         transferAmt = requestedAmount;
       } else {
-        transferAmt = balanceInMicroUnits - gasFeeBuffer;
+        transferAmt = balanceInMicroUnits - NOBLE_IBC_GAS_FEE;
       }
 
       if (transferAmt <= 0) {
         throw new Error('Insufficient balance. Need at least 0.025 USDC for gas fees.');
       }
 
-      const ibcMsg = {
-        typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
-        value: MsgTransfer.fromPartial({
-          sourcePort: 'transfer',
-          sourceChannel: process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet' ? 'channel-0' : 'channel-0',
-          token: {
-            denom: 'uusdc',
-            amount: transferAmt.toString(),
-          },
-          sender: nobleAddress,
-          receiver: xionAddress,
-          timeoutHeight: undefined,
-          timeoutTimestamp: BigInt(Date.now() + 10 * 60 * 1000) * BigInt(1000000),
-          memo: 'Return USDC to Xion',
-        }),
-      };
+      const ibcMsg = buildIBCTransferMessageMicroUnits({
+        senderAddress: nobleAddress,
+        receiverAddress: xionAddress,
+        microUnits: transferAmt.toString(),
+        denom: 'uusdc',
+        channel: process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet' ? 'channel-0' : 'channel-0',
+        memo: 'Return USDC to Xion'
+      });
 
       const result = await nobleSigningClient.signAndBroadcast(
         nobleAddress,
         [ibcMsg],
         {
-          amount: [{ denom: 'uusdc', amount: '25000' }],
-          gas: '200000'
+          amount: [{ denom: 'uusdc', amount: NOBLE_IBC_GAS_FEE.toString() }],
+          gas: NOBLE_GAS_LIMIT
         },
         'IBC transfer back to Xion'
       );
@@ -266,7 +255,7 @@ export function useCCTPTransfer(
 
       setTimeout(() => {
         setStatusMessage('');
-      }, 5000);
+      }, SUCCESS_MESSAGE_DURATION);
     } catch (err: any) {
       console.error('Noble → Xion transfer error:', err);
       setError(err.message || 'Transfer failed');
@@ -290,22 +279,20 @@ export function useCCTPTransfer(
       setCctpStep('burn');
       setStatusMessage('Burning USDC on Noble via CCTP...');
 
-      const baseAddressBytes = formatAddressForCCTP(baseAddress);
-      const baseAddressHex = '0x' + Buffer.from(baseAddressBytes).toString('hex');
+      const baseAddressHex = formatAddressForCCTPHex(baseAddress);
 
       const freshNobleBalance = await nobleQueryClient!.getBalance(nobleAddress, 'uusdc');
       const balanceInMicroUnits = parseInt(freshNobleBalance.amount);
-      const gasFeeBuffer = 40000;
 
       let burnAmount: number;
       if (inputAmount && parseFloat(inputAmount) > 0) {
         const requestedAmount = Math.floor(parseFloat(inputAmount) * 1000000);
-        if (requestedAmount + gasFeeBuffer > balanceInMicroUnits) {
+        if (requestedAmount + NOBLE_BURN_GAS_BUFFER > balanceInMicroUnits) {
           throw new Error('Insufficient balance for requested amount plus gas fees.');
         }
         burnAmount = requestedAmount;
       } else {
-        burnAmount = balanceInMicroUnits - gasFeeBuffer;
+        burnAmount = balanceInMicroUnits - NOBLE_BURN_GAS_BUFFER;
       }
 
       if (burnAmount <= 0) {
@@ -341,12 +328,12 @@ export function useCCTPTransfer(
       setCctpStep('mint');
       setStatusMessage('Minting USDC on Base...');
 
-      const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+      const network = getNetworkEnvironment();
       const mintTxHash = await mintUSDCOnBaseWithEthers(
         baseSigner,
         new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
         attestationHex,
-        network as 'mainnet' | 'sepolia'
+        network
       );
 
       console.log('✅ Funds minted on Base! TX:', mintTxHash);
@@ -356,7 +343,7 @@ export function useCCTPTransfer(
 
       setTimeout(() => {
         resetFlow();
-      }, 5000);
+      }, SUCCESS_MESSAGE_DURATION);
 
     } catch (err: any) {
       console.error('Noble → Base CCTP error:', err);

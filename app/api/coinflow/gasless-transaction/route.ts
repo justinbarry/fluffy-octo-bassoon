@@ -1,26 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL, COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
-import { destinations } from '@/config';
+import { NextRequest } from 'next/server';
+import {
+  validateFields,
+  validateWallet,
+  validateSessionKey,
+  validateSignature,
+  validateMessage,
+  getCoinflowBaseHeaders,
+  buildWithdrawalRequestBody,
+  makeCoinflowRequest,
+  handleApiError
+} from '@/utils/apiHelpers';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { wallet, sessionKey, signature, message, amount, speed, bankAccountToken } = body;
 
-    if (!wallet) {
-      return createErrorResponse('Wallet address is required');
-    }
+    // Validate required fields
+    const validation = validateFields([
+      validateWallet(wallet),
+      validateSessionKey(sessionKey),
+      validateSignature(signature),
+      validateMessage(message)
+    ]);
 
-    if (!sessionKey) {
-      return createErrorResponse('Session key is required');
-    }
-
-    if (!signature) {
-      return createErrorResponse('Signature is required');
-    }
-
-    if (!message) {
-      return createErrorResponse('Message is required');
+    if (!validation.isValid) {
+      return validation.error;
     }
 
     console.log('Submitting gasless EVM transaction to Coinflow:', {
@@ -33,36 +38,19 @@ export async function POST(request: NextRequest) {
     });
 
     // Submit the signed permit message to Coinflow for gasless withdrawal
-    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm/transaction`, {
+    return await makeCoinflowRequest({
+      endpoint: '/withdraw/evm/transaction',
       method: 'POST',
-      headers: {
-        ...getCoinflowHeaders(sessionKey, wallet),
-        'x-coinflow-auth-blockchain': 'base'
-      },
-      body: JSON.stringify({
-        amount: parseFloat(amount),
-        merchantId: COINFLOW_MERCHANT_ID(),
+      headers: getCoinflowBaseHeaders(sessionKey, wallet),
+      body: buildWithdrawalRequestBody({
+        amount,
         speed,
-        account: bankAccountToken,
-        token: {
-          mint: destinations.base.usdcAddress,
-          decimals: destinations.base.usdcDecimals
-        },
-        evmTransferAuthorizationData: {
+        bankAccountToken,
+        evmAuthData: {
           data: signature // The signature from signedTypedData
         }
       })
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('Coinflow gasless transaction error:', error);
-      return createErrorResponse(`Failed to submit gasless transaction: ${JSON.stringify(error)}`, response.status);
-    }
-
-    const data = await response.json();
-    console.log('Gasless transaction submitted successfully:', data);
-    return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error, 'Error submitting gasless transaction');
   }

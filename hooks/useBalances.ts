@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { sources } from '@/config';
 import { getBaseUSDCBalance } from '@/utils/cctpBase';
+import { microUnitsToUsdcFormatted } from '@/utils/conversions';
+import { BALANCE_POLL_INTERVAL, getNetworkEnvironment } from '@/utils/constants';
 
 interface BalancesReturn {
   xionUsdcBalance: string;
@@ -27,14 +29,14 @@ export function useBalances(
 
       try {
         const balance = await xionQueryClient.getBalance(xionAddress, sources.xion.usdcDenom);
-        setXionUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
+        setXionUsdcBalance(microUnitsToUsdcFormatted(balance.amount, 2));
       } catch (error) {
         console.error('Error fetching Xion balance:', error);
       }
     };
 
     fetchXionBalance();
-    const interval = setInterval(fetchXionBalance, 10000);
+    const interval = setInterval(fetchXionBalance, BALANCE_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [xionAddress, xionQueryClient]);
 
@@ -45,14 +47,14 @@ export function useBalances(
 
       try {
         const balance = await nobleQueryClient.getBalance(nobleAddress, 'uusdc');
-        setNobleUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
+        setNobleUsdcBalance(microUnitsToUsdcFormatted(balance.amount, 2));
       } catch (error) {
         console.error('Error fetching Noble balance:', error);
       }
     };
 
     fetchNobleBalance();
-    const interval = setInterval(fetchNobleBalance, 10000);
+    const interval = setInterval(fetchNobleBalance, BALANCE_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [nobleAddress, nobleQueryClient]);
 
@@ -62,8 +64,8 @@ export function useBalances(
       if (!baseAddress) return;
 
       try {
-        const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
-        const balance = await getBaseUSDCBalance(baseAddress, network as 'mainnet' | 'sepolia');
+        const network = getNetworkEnvironment();
+        const balance = await getBaseUSDCBalance(baseAddress, network);
         setBaseUsdcBalance(balance);
       } catch (error) {
         console.error('Error fetching Base balance:', error);
@@ -71,7 +73,7 @@ export function useBalances(
     };
 
     fetchBaseBalance();
-    const interval = setInterval(fetchBaseBalance, 10000);
+    const interval = setInterval(fetchBaseBalance, BALANCE_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [baseAddress]);
 

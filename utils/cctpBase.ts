@@ -10,6 +10,7 @@ import { TurnkeySigner } from "@turnkey/ethers";
 import { ethers } from "ethers";
 import { destinations } from "@/config";
 import { getBaseChain } from "./turnkeyBase";
+import { ensureHexPrefix, removeHexPrefix } from "./conversions";
 
 // ERC-20 ABI (minimal - just what we need)
 const ERC20_ABI = parseAbi([
@@ -72,12 +73,10 @@ export async function mintUSDCOnBaseWithTurnkey(
 
   try {
     // Convert message to hex
-    const messageHex = `0x${Buffer.from(message).toString("hex")}` as `0x${string}`;
+    const messageHex = ensureHexPrefix(Buffer.from(message).toString("hex")) as `0x${string}`;
 
     // Ensure attestation is properly formatted
-    const attestationHex = attestation.startsWith("0x")
-      ? (attestation as `0x${string}`)
-      : (`0x${attestation}` as `0x${string}`);
+    const attestationHex = ensureHexPrefix(attestation) as `0x${string}`;
 
     // Call receiveMessage on MessageTransmitter
     const hash = await walletClient.writeContract({
@@ -137,10 +136,8 @@ export async function estimateMintGas(
 ): Promise<bigint> {
   const chain = getBaseChain(network);
   const messageTransmitterAddress = destinations.base.cctp.messageTransmitter;
-  const messageHex = `0x${Buffer.from(message).toString("hex")}` as `0x${string}`;
-  const attestationHex = attestation.startsWith("0x")
-    ? (attestation as `0x${string}`)
-    : (`0x${attestation}` as `0x${string}`);
+  const messageHex = ensureHexPrefix(Buffer.from(message).toString("hex")) as `0x${string}`;
+  const attestationHex = ensureHexPrefix(attestation) as `0x${string}`;
 
   try {
     // Create a public client for gas estimation
@@ -212,8 +209,8 @@ export async function mintUSDCOnBaseWithEthers(
     const contract = new ethers.Contract(messageTransmitterAddress, abi, signer);
 
     // Convert to hex strings
-    const messageHex = `0x${Buffer.from(message).toString("hex")}`;
-    const attestationHex = attestation.startsWith("0x") ? attestation : `0x${attestation}`;
+    const messageHex = ensureHexPrefix(Buffer.from(message).toString("hex"));
+    const attestationHex = ensureHexPrefix(attestation);
 
     // Call receiveMessage
     const tx = await contract.receiveMessage(messageHex, attestationHex);
@@ -230,30 +227,5 @@ export async function mintUSDCOnBaseWithEthers(
   }
 }
 
-/**
- * Format Base address to 32-byte format for CCTP (with left padding)
- */
-export function formatAddressForCCTP(address: string): Uint8Array {
-  // Remove 0x prefix if present
-  const cleanAddress = address.startsWith("0x") ? address.slice(2) : address;
-
-  // Base addresses are 20 bytes (40 hex chars), CCTP expects 32 bytes
-  // Pad with zeros on the left
-  const paddedAddress = cleanAddress.padStart(64, "0");
-
-  // Convert to Uint8Array
-  return new Uint8Array(
-    paddedAddress.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-  );
-}
-
-/**
- * Parse a Base address from CCTP 32-byte format
- */
-export function parseAddressFromCCTP(bytes: Uint8Array): string {
-  // CCTP stores addresses as 32 bytes, but Base addresses are only 20 bytes
-  // Extract the last 20 bytes
-  const addressBytes = bytes.slice(-20);
-  const address = `0x${Buffer.from(addressBytes).toString("hex")}`;
-  return address;
-}
+// Re-export address formatting functions from conversions.ts for backwards compatibility
+export { formatAddressForCCTP, parseAddressFromCCTP } from "./conversions";

@@ -1,5 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL } from '@/utils/coinflowApi';
+import { NextRequest } from 'next/server';
+import {
+  validateFields,
+  validateWallet,
+  validateSessionKey,
+  getCoinflowBaseHeaders,
+  makeCoinflowRequest,
+  handleApiError
+} from '@/utils/apiHelpers';
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,31 +14,24 @@ export async function GET(request: NextRequest) {
     const wallet = searchParams.get('wallet');
     const sessionKey = searchParams.get('sessionKey');
 
-    if (!wallet) {
-      return createErrorResponse('Wallet address is required');
-    }
+    // Validate required fields
+    const validation = validateFields([
+      validateWallet(wallet),
+      validateSessionKey(sessionKey)
+    ]);
 
-    if (!sessionKey) {
-      return createErrorResponse('Session key is required');
+    if (!validation.isValid) {
+      return validation.error;
     }
 
     console.log('Fetching withdrawer details for:', wallet);
 
     // Get the withdrawer details from Coinflow
-    const response = await fetch(`${COINFLOW_URL()}/withdraw`, {
+    return await makeCoinflowRequest({
+      endpoint: '/withdraw',
       method: 'GET',
-      headers: getCoinflowHeaders(sessionKey, wallet)
+      headers: getCoinflowBaseHeaders(sessionKey!, wallet!)
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('Coinflow withdrawer error:', error);
-      return createErrorResponse('Failed to get withdrawer details', response.status);
-    }
-
-    const data = await response.json();
-    console.log('Withdrawer details:', data);
-    return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error, 'Error getting withdrawer details');
   }

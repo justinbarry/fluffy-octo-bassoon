@@ -3,96 +3,32 @@
  * Handles attestation fetching and CCTP message parsing
  */
 
-import { Buffer } from 'buffer';
 import { bridge, cctp } from '@/config';
 import { CCTPAttestationResponse } from '@/types/cctp';
+import { ATTESTATION_MAX_ATTEMPTS, ATTESTATION_POLL_INTERVAL } from './constants';
 
-function decodeBase64(base64: string): Uint8Array {
-  if (!base64) {
-    return new Uint8Array();
-  }
-
-  try {
-    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
-      const binary = window.atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      return bytes;
-    }
-
-    if (typeof Buffer !== 'undefined') {
-      return Uint8Array.from(Buffer.from(base64, 'base64'));
-    }
-  } catch (error) {
-    console.error('❌ Failed to decode base64 string:', error);
-  }
-
-  return new Uint8Array();
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function ensureHexPrefix(value: string): string {
-  if (!value) {
-    return value;
-  }
-  return value.startsWith('0x') ? value : `0x${value}`;
-}
-
-export function base64ToHex(base64: string): string {
-  if (!base64) {
-    return '';
-  }
-
-  const bytes = decodeBase64(base64);
-  if (!bytes.length) {
-    return base64.startsWith('0x') ? base64 : `0x${base64}`;
-  }
-
-  return ensureHexPrefix(bytesToHex(bytes));
-}
-
-export function normalizeAttestation(attestation: string): string {
-  if (!attestation) {
-    return '';
-  }
-
-  if (attestation.startsWith('0x')) {
-    return attestation;
-  }
-
-  return base64ToHex(attestation);
-}
-
-export function normalizeMessageBytes(message?: string): string {
-  if (!message) {
-    return '';
-  }
-
-  if (message.startsWith('0x')) {
-    return message;
-  }
-
-  return base64ToHex(message);
-}
+// Re-export conversion functions from conversions.ts
+export {
+  normalizeAttestation,
+  normalizeMessageBytes,
+  base64ToHex,
+  usdcToMicroUnits,
+  microUnitsToUsdc,
+  formatEVMAddress,
+  isValidEVMAddress
+} from './conversions';
 
 /**
  * Poll Circle's attestation service for a burn message attestation
  * @param transactionHash - The Noble burn transaction hash
- * @param maxAttempts - Maximum number of polling attempts (default: 40)
- * @param pollInterval - Interval between attempts in ms (default: 3000)
+ * @param maxAttempts - Maximum number of polling attempts (default: from constants)
+ * @param pollInterval - Interval between attempts in ms (default: from constants)
  * @returns The attestation signature
  */
 export async function getAttestationSignature(
   transactionHash: string,
-  maxAttempts: number = 40,
-  pollInterval: number = 3000
+  maxAttempts: number = ATTESTATION_MAX_ATTEMPTS,
+  pollInterval: number = ATTESTATION_POLL_INTERVAL
 ): Promise<{ attestation: string; message?: string }> {
   const sourceDomain = bridge.cctpDomain;
   // CCTP v1 endpoint format: /v1/messages/{sourceDomain}/{transactionHash}
@@ -166,34 +102,6 @@ export function parseCCTPBurnEvent(txResult: any): {
   // TODO: Implement actual event parsing from Noble CCTP module
   // This will require parsing the transaction events/logs
   throw new Error('parseCCTPBurnEvent not yet implemented');
-}
-
-/**
- * Convert amount from USDC units to micro-units (6 decimals)
- */
-export function usdcToMicroUnits(amount: string): string {
-  return `${parseInt(amount) * 1000000}`;
-}
-
-/**
- * Convert amount from micro-units to USDC units (6 decimals)
- */
-export function microUnitsToUsdc(amount: string): string {
-  return (parseInt(amount) / 1000000).toFixed(6);
-}
-
-/**
- * Format EVM address with checksum
- */
-export function formatEVMAddress(address: string): string {
-  return address.toLowerCase().startsWith('0x') ? address : `0x${address}`;
-}
-
-/**
- * Validate Ethereum address format
- */
-export function isValidEVMAddress(address: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
 }
 
 /**

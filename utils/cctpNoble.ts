@@ -11,7 +11,7 @@ import { CCTPBurnResult } from '@/types/cctp';
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 
 /**
- * Burn USDC on Noble using CCTP to transfer to Solana
+ * Burn USDC on Noble using CCTP to transfer to Base
  *
  * Noble implements CCTP as a Cosmos SDK module (not smart contracts like EVM chains).
  * The module uses the message type: /circle.cctp.v1.MsgDepositForBurn
@@ -19,8 +19,8 @@ import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/c
  * @param signingClient - Noble signing client
  * @param senderAddress - Noble sender address (noble1...)
  * @param amount - Amount in micro-units (1 USDC = 1,000,000 uusdc)
- * @param destinationDomain - CCTP domain ID for destination (5 = Solana)
- * @param mintRecipient - Solana address as hex bytes (32 bytes)
+ * @param destinationDomain - CCTP domain ID for destination (6 = Base)
+ * @param mintRecipient - Base address as hex bytes (32 bytes, left-padded)
  * @param destinationCaller - Optional: Address allowed to call receiveMessage on destination
  * @returns Burn transaction result with message details
  */
@@ -202,9 +202,5 @@ function extractNonceFromEvents(events: readonly any[]): bigint {
   return BigInt(0);
 }
 
-/**
- * Format amount from USDC to micro-units
- */
-export function formatUSDCAmount(usdcAmount: string): string {
-  return `${parseInt(usdcAmount) * 1000000}`;
-}
+// Re-export conversion function for backwards compatibility
+export { usdcToMicroUnits as formatUSDCAmount } from './conversions';

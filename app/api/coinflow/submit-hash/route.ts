@@ -1,50 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL } from '@/utils/coinflowApi';
+import { NextRequest } from 'next/server';
+import {
+  validateFields,
+  validateWallet,
+  validateSessionKey,
+  validateHash,
+  getCoinflowBaseHeaders,
+  makeCoinflowRequest,
+  handleApiError
+} from '@/utils/apiHelpers';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { wallet, sessionKey, hash } = body;
 
-    if (!wallet) {
-      return createErrorResponse('Wallet address is required');
+    // Validate required fields
+    const validation = validateFields([
+      validateWallet(wallet),
+      validateSessionKey(sessionKey),
+      validateHash(hash)
+    ]);
+
+    if (!validation.isValid) {
+      return validation.error;
     }
 
-    if (!sessionKey) {
-      return createErrorResponse('Session key is required');
-    }
-
-    if (!hash) {
-      return createErrorResponse('Transaction hash is required');
-    }
-
-    console.log('Submitting transaction hash to Coinflow:', {
-      wallet,
-      hash
-    });
+    console.log('Submitting transaction hash to Coinflow:', { wallet, hash });
 
     // Submit transaction hash to Coinflow
-    const response = await fetch(`${COINFLOW_URL()}/transaction`, {
+    return await makeCoinflowRequest({
+      endpoint: '/transaction',
       method: 'POST',
-      headers: {
-        ...getCoinflowHeaders(sessionKey, wallet),
-        'x-coinflow-auth-blockchain': 'base'
-      },
-      body: JSON.stringify({
+      headers: getCoinflowBaseHeaders(sessionKey, wallet),
+      body: {
         hash,
         blockchain: 'base'
-      })
+      }
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('Coinflow hash submission error:', error);
-      return createErrorResponse(`Failed to submit transaction hash: ${JSON.stringify(error)}`, response.status);
-    }
-
-    const data = await response.json();
-    console.log('Transaction hash submitted successfully:', data);
-    return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error, 'Error submitting transaction hash');
   }
