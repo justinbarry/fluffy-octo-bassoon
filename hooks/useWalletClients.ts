@@ -189,14 +189,15 @@ export function useWalletClients(
         // Initialize Base signer with Turnkey using ethers
         try {
           console.log('🔧 Initializing Base signer with ethers...');
-          console.log('   Ethereum account public key:', ethereumAccount.publicKey);
+          console.log('   Ethereum address:', ethereumAccount.address);
           const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
 
-          // For TurnkeySigner, use the public key from the Ethereum account
+          // For TurnkeySigner, use the Ethereum address itself
+          // TurnkeySigner checks if signWith is a valid address and uses it directly
           const signer = await createTurnkeyBaseSigner(
             httpClient,
             actualOrgId,
-            ethereumAccount.publicKey, // Use the Ethereum account's public key
+            ethereumAccount.address, // Use the Ethereum address
             network as 'mainnet' | 'sepolia'
           );
 
