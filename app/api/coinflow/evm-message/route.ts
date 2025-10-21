@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get EVM permit message from Coinflow for gasless withdrawal
-    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm-message`, {
+    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm/message`, {
       method: 'POST',
       headers: {
         ...getCoinflowHeaders(sessionKey, wallet),
