@@ -116,8 +116,24 @@ export function useWithdrawal(
       }
 
       const txData = await txResponse.json();
+      console.log('✅ Withdrawal transaction details:', txData);
+
+      // Validate transaction data
+      if (!txData.address) {
+        throw new Error('Missing destination address in withdrawal transaction');
+      }
+      if (!txData.amount && txData.amount !== 0) {
+        throw new Error('Missing amount in withdrawal transaction');
+      }
 
       setStatusMessage('Sending USDC transaction on Base...');
+      console.log('📤 Executing USDC transfer:', {
+        usdcContract: destinations.base.usdcAddress,
+        to: txData.address,
+        amount: txData.amount,
+        amountType: typeof txData.amount
+      });
+
       const hash = await baseWalletClient.writeContract({
         address: destinations.base.usdcAddress as `0x${string}`,
         abi: [

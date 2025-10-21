@@ -58,7 +58,14 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('Withdrawal transaction details:', data);
+    console.log('Withdrawal transaction details from Coinflow:', {
+      fullResponse: data,
+      hasAddress: !!data.address,
+      hasAmount: !!data.amount,
+      address: data.address,
+      amount: data.amount,
+      amountType: typeof data.amount
+    });
     return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error, 'Error getting withdrawal transaction');
