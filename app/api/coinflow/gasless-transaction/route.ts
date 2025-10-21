@@ -49,8 +49,7 @@ export async function POST(request: NextRequest) {
           decimals: destinations.base.usdcDecimals
         },
         evmTransferAuthorizationData: {
-          signature,
-          message
+          data: signature // The signature from signedTypedData
         }
       })
     });
