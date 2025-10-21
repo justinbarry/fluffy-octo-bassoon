@@ -22,6 +22,12 @@ import { createTurnkeyBaseClient, deriveBaseAddress } from '@/utils/turnkeyBase'
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 import { getOrganizationId } from '@/utils/turnkeyWallet';
 
+// Components
+import { WalletConnect } from '@/components/wallet/WalletConnect';
+import { BalanceSection } from '@/components/wallet/BalanceSection';
+import { CCTPBridgeForm } from '@/components/bridge/CCTPBridgeForm';
+import { CoinflowWithdrawal } from '@/components/withdrawal/CoinflowWithdrawal';
+
 type CCTPStep = 'idle' | 'ibc' | 'burn' | 'attest' | 'mint' | 'complete';
 
 interface TxHashes {
@@ -1165,437 +1171,81 @@ export default function Home() {
         </p>
 
         {/* Wallet Connection Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-semibold mb-4">Connect Wallets</h2>
-
-          {/* Turnkey (Xion/Noble) */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Cosmos Chains (Xion/Noble)
-            </label>
-            <button
-              onClick={() => {
-                console.log('🔘 Connect button clicked');
-                console.log('   Auth state:', authState);
-                console.log('   Is authenticated:', authState === AuthState.Authenticated);
-                console.log('   handleLogin type:', typeof handleLogin);
-
-                if (authState !== AuthState.Authenticated) {
-                  console.log('🚀 Calling handleLogin()...');
-                  handleLogin();
-                } else {
-                  console.log('ℹ️ Already authenticated');
-                }
-              }}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
-            >
-              {xionAddress ? `Connected: ${xionAddress.slice(0, 12)}...` : 'Connect Turnkey'}
-            </button>
-            {xionAddress && (
-              <div className="mt-2 text-sm text-gray-600">
-                <div>Xion: {xionAddress}</div>
-                <div>Noble: {nobleAddress}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Base - derived from Turnkey */}
-          {baseAddress && (
-            <div className="mt-4 p-3 bg-purple-50 rounded-lg">
-              <div className="text-sm font-medium text-gray-700">Base (Turnkey)</div>
-              <div className="text-xs text-gray-600 mt-1 break-all font-mono">
-                {baseAddress}
-              </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(baseAddress);
-                  setStatusMessage('Base address copied!');
-                  setTimeout(() => setStatusMessage(''), 2000);
-                }}
-                className="mt-2 text-xs text-purple-600 hover:text-purple-800"
-              >
-                📋 Copy address
-              </button>
-            </div>
-          )}
-
-          {/* Debug Button - Always visible */}
-          <div className="mt-4">
-            <button
-              onClick={debugWhoAmI}
-              disabled={!httpClient}
-              className="w-full bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              🔍 Debug: Call Turnkey whoami (check console)
-            </button>
-          </div>
-        </div>
+        <WalletConnect
+          authState={authState}
+          xionAddress={xionAddress}
+          nobleAddress={nobleAddress}
+          baseAddress={baseAddress}
+          httpClient={httpClient}
+          handleLogin={handleLogin}
+          debugWhoAmI={debugWhoAmI}
+          onCopyAddress={(address) => {
+            navigator.clipboard.writeText(address);
+            setStatusMessage('Base address copied!');
+            setTimeout(() => setStatusMessage(''), 2000);
+          }}
+        />
 
         {/* Balances */}
-        {(xionAddress || baseAddress) && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-2xl font-semibold mb-4">Balances</h2>
-            <div className="grid grid-cols-3 gap-4">
-              {xionAddress && (
-                <div className="p-4 bg-indigo-50 rounded-lg">
-                  <div className="text-sm text-gray-600">Xion USDC</div>
-                  <div className="text-2xl font-bold">${xionUsdcBalance}</div>
-                </div>
-              )}
-              {nobleAddress && (
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <div className="text-sm text-gray-600">Noble USDC</div>
-                  <div className="text-2xl font-bold">${nobleUsdcBalance}</div>
-                  {parseFloat(nobleUsdcBalance) > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {/* IBC to Xion */}
-                      <div>
-                        <input
-                          type="number"
-                          value={nobleToXionAmount}
-                          onChange={(e) => setNobleToXionAmount(e.target.value)}
-                          placeholder="Amount (or leave empty for all)"
-                          disabled={loading}
-                          className="w-full text-xs px-2 py-1 border border-gray-300 rounded mb-1"
-                        />
-                        <button
-                          onClick={() => transferNobleToXion(nobleToXionAmount)}
-                          disabled={loading}
-                          className="w-full text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
-                        >
-                          ← IBC to Xion
-                        </button>
-                      </div>
-                      {/* CCTP to Base */}
-                      <div>
-                        <input
-                          type="number"
-                          value={nobleToBaseAmount}
-                          onChange={(e) => setNobleToBaseAmount(e.target.value)}
-                          placeholder="Amount (or leave empty for all)"
-                          disabled={loading || !baseAddress}
-                          className="w-full text-xs px-2 py-1 border border-gray-300 rounded mb-1"
-                        />
-                        <button
-                          onClick={() => burnNobleToBase(nobleToBaseAmount)}
-                          disabled={loading || !baseAddress}
-                          className="w-full text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-1 px-2 rounded"
-                        >
-                          → CCTP to Base
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {baseAddress && (
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <div className="text-sm text-gray-600">Base USDC</div>
-                  <div className="text-2xl font-bold">${baseUsdcBalance.toFixed(2)}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <BalanceSection
+          xionAddress={xionAddress}
+          nobleAddress={nobleAddress}
+          baseAddress={baseAddress}
+          xionUsdcBalance={xionUsdcBalance}
+          nobleUsdcBalance={nobleUsdcBalance}
+          baseUsdcBalance={baseUsdcBalance}
+          nobleToXionAmount={nobleToXionAmount}
+          nobleToBaseAmount={nobleToBaseAmount}
+          loading={loading}
+          onNobleToXionAmountChange={setNobleToXionAmount}
+          onNobleToBaseAmountChange={setNobleToBaseAmount}
+          onTransferToXion={transferNobleToXion}
+          onTransferToBase={burnNobleToBase}
+        />
 
         {/* CCTP Transfer Section */}
-        {cctpStep !== 'complete' && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-2xl font-semibold mb-4">CCTP Bridge</h2>
-
-            {/* Amount Input */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Amount (USDC)
-              </label>
-              <input
-                type="number"
-                value={transferAmount}
-                onChange={(e) => setTransferAmount(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="Enter amount"
-                disabled={loading || cctpStep !== 'idle'}
-              />
-            </div>
-
-            {/* Status Message */}
-            {statusMessage && (
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-                <p className="text-blue-800">{statusMessage}</p>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 rounded-lg">
-                <p className="text-red-800">{error}</p>
-              </div>
-            )}
-
-            {/* Progress Steps */}
-            {cctpStep !== 'idle' && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  {['ibc', 'burn', 'attest', 'mint'].map((step, idx) => (
-                    <div key={step} className="flex-1">
-                      <div className={`h-2 rounded-full ${
-                        cctpStep === step ? 'bg-indigo-600' :
-                        ['ibc', 'burn', 'attest', 'mint'].indexOf(cctpStep) > idx ? 'bg-green-500' :
-                        'bg-gray-200'
-                      }`} />
-                      <div className="text-xs text-center mt-1 text-gray-600">
-                        {step.toUpperCase()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Transaction Hashes */}
-            {Object.keys(txHashes).length > 0 && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg text-sm">
-                <div className="font-medium mb-2">Transaction Hashes:</div>
-                {txHashes.ibcTransfer && (
-                  <div className="mb-1 break-all">
-                    <span className="font-medium">IBC:</span> {txHashes.ibcTransfer}
-                  </div>
-                )}
-                {txHashes.nobleBurn && (
-                  <div className="mb-1 break-all">
-                    <span className="font-medium">Burn:</span> {txHashes.nobleBurn}
-                  </div>
-                )}
-                {txHashes.baseMint && (
-                  <div className="break-all">
-                    <span className="font-medium">Mint:</span> {txHashes.baseMint}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <button
-                onClick={handleCCTPTransfer}
-                disabled={loading || cctpStep !== 'idle' || !xionAddress || !baseAddress}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
-              >
-                {loading ? 'Processing...' : 'Start CCTP Transfer'}
-              </button>
-              {cctpStep !== 'idle' && (
-                <button
-                  onClick={resetFlow}
-                  className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        <CCTPBridgeForm
+          transferAmount={transferAmount}
+          statusMessage={statusMessage}
+          error={error}
+          cctpStep={cctpStep}
+          txHashes={txHashes}
+          loading={loading}
+          xionAddress={xionAddress}
+          baseAddress={baseAddress}
+          onTransferAmountChange={setTransferAmount}
+          onSubmit={handleCCTPTransfer}
+          onReset={resetFlow}
+        />
 
         {/* Coinflow Withdrawal Section */}
-        {baseAddress && baseUsdcBalance > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-2xl font-semibold mb-4">Withdraw to Bank Account</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              {cctpStep === 'complete' && 'USDC has been successfully bridged to Base via CCTP!'}
-              {cctpStep !== 'complete' && `You have $${baseUsdcBalance.toFixed(2)} USDC on Base.`}
-            </p>
-
-            {/* Show bank accounts if available */}
-            {withdrawerDetails?.withdrawer?.bankAccounts?.length > 0 ? (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-medium text-gray-700">Your Bank Accounts</h3>
-                  <button
-                    onClick={loadWithdrawerDetails}
-                    className="text-xs text-indigo-600 hover:text-indigo-800"
-                  >
-                    🔄 Refresh
-                  </button>
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Bank Account
-                  </label>
-                  <select
-                    value={selectedBankAccount}
-                    onChange={(e) => setSelectedBankAccount(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    {withdrawerDetails.withdrawer.bankAccounts.map((account: any) => (
-                      <option key={account.token} value={account.token}>
-                        {account.name} - {account.mask}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Amount (USDC)
-                  </label>
-                  <input
-                    type="number"
-                    value={withdrawAmount}
-                    onChange={async (e) => {
-                      const value = e.target.value;
-                      setWithdrawAmount(value);
-                      if (value && parseFloat(value) > 0) {
-                        await getQuote(value);
-                      } else {
-                        setQuote(null);
-                      }
-                    }}
-                    max={baseUsdcBalance}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Enter amount"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Available: ${baseUsdcBalance.toFixed(2)} USDC
-                  </p>
-                </div>
-
-                {gettingQuote && (
-                  <div className="mb-4 text-sm text-gray-500">
-                    Getting quote...
-                  </div>
-                )}
-
-                {quote && (
-                  <div className="mb-4 space-y-3">
-                    <div className="text-sm font-medium text-gray-700 mb-2">Select withdrawal speed:</div>
-
-                    {/* Standard ACH */}
-                    <div
-                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                        selectedSpeed === 'standard'
-                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
-                          : 'hover:bg-gray-50 border-gray-300'
-                      }`}
-                      onClick={() => setSelectedSpeed('standard')}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium">Standard ACH (2-3 business days)</span>
-                        <span className="text-green-600 font-medium">
-                          ${(quote.standard.finalSettlement.cents / 100).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Fee: ${(quote.standard.fee.cents / 100).toFixed(2)}
-                      </div>
-                    </div>
-
-                    {/* ASAP */}
-                    <div
-                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                        selectedSpeed === 'asap'
-                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
-                          : 'hover:bg-gray-50 border-gray-300'
-                      }`}
-                      onClick={() => setSelectedSpeed('asap')}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium">ASAP (Minutes)</span>
-                        <span className="text-green-600 font-medium">
-                          ${(quote.asap.finalSettlement.cents / 100).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Fee: ${(quote.asap.fee.cents / 100).toFixed(2)}
-                      </div>
-                    </div>
-
-                    {/* Same Day ACH */}
-                    <div
-                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                        selectedSpeed === 'same_day'
-                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
-                          : 'hover:bg-gray-50 border-gray-300'
-                      }`}
-                      onClick={() => setSelectedSpeed('same_day')}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium">Same Day ACH</span>
-                        <span className="text-green-600 font-medium">
-                          ${(quote.same_day.finalSettlement.cents / 100).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Fee: ${(quote.same_day.fee.cents / 100).toFixed(2)}
-                      </div>
-                    </div>
-
-                    {quote.gasFees?.gasFees?.cents > 0 && (
-                      <div className="text-xs text-gray-500 mt-2">
-                        Gas fees: ${(quote.gasFees.gasFees.cents / 100).toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex gap-3 mb-4">
-                  <button
-                    onClick={handleWithdraw}
-                    disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > baseUsdcBalance}
-                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
-                  >
-                    {withdrawing ? 'Processing...' : `Withdraw (With Gas)`}
-                  </button>
-                  <button
-                    onClick={handleWithdrawGasless}
-                    disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > baseUsdcBalance}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
-                  >
-                    {withdrawing ? 'Processing...' : `Gasless Withdraw ⚡`}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-600 mb-4 text-center">
-                  💡 Gasless withdrawal uses EIP-712 permit signing - no Base gas fees required!
-                </p>
-
-                {withdrawalTxHash && (
-                  <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                    <p className="text-xs text-green-800 break-all">
-                      <strong>Transaction Hash:</strong><br />
-                      {withdrawalTxHash}
-                    </p>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleBankAccountLink}
-                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors text-sm"
-                >
-                  + Add Another Bank Account
-                </button>
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={handleBankAccountLink}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-lg transition-colors mb-4"
-                >
-                  Link Bank Account & Withdraw
-                </button>
-
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <p className="text-xs text-blue-800">
-                    <strong>First-time users:</strong> You'll be redirected to Coinflow to:
-                    <br />1. Verify your email
-                    <br />2. Complete KYC verification (identity check)
-                    <br />3. Link your bank account (ACH for US, IBAN for EU, etc.)
-                    <br />4. Set up and complete your withdrawal
-                    <br />
-                    <br />After linking your bank, you'll be returned to this page.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        <CoinflowWithdrawal
+          baseAddress={baseAddress}
+          baseUsdcBalance={baseUsdcBalance}
+          cctpStep={cctpStep}
+          withdrawerDetails={withdrawerDetails}
+          withdrawAmount={withdrawAmount}
+          withdrawing={withdrawing}
+          withdrawalTxHash={withdrawalTxHash}
+          selectedBankAccount={selectedBankAccount}
+          selectedSpeed={selectedSpeed}
+          quote={quote}
+          gettingQuote={gettingQuote}
+          onWithdrawAmountChange={async (value) => {
+            setWithdrawAmount(value);
+            if (value && parseFloat(value) > 0) {
+              await getQuote(value);
+            } else {
+              setQuote(null);
+            }
+          }}
+          onBankAccountChange={setSelectedBankAccount}
+          onSpeedChange={setSelectedSpeed}
+          onWithdraw={handleWithdraw}
+          onWithdrawGasless={handleWithdrawGasless}
+          onBankAccountLink={handleBankAccountLink}
+          onRefreshWithdrawer={loadWithdrawerDetails}
+        />
       </div>
     </main>
   );
