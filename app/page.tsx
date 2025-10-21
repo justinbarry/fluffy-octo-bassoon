@@ -32,6 +32,7 @@ export default function Home() {
     xionAddress,
     nobleAddress,
     baseAddress,
+    subOrganizationId,
   } = useWalletClients(httpClient, firstWallet);
 
   // Fetch and poll balances
@@ -71,6 +72,17 @@ export default function Home() {
   const { sessionKey, withdrawerDetails, getSessionKey, loadWithdrawerDetails } =
     useCoinflowSession(baseAddress);
 
+  // Log the organization IDs for debugging
+  useEffect(() => {
+    if (subOrganizationId) {
+      console.log('📊 Organization IDs:', {
+        parentOrgId: process.env.NEXT_PUBLIC_TURNKEY_ORG_ID,
+        subOrgId: subOrganizationId,
+        isSubOrg: subOrganizationId !== process.env.NEXT_PUBLIC_TURNKEY_ORG_ID
+      });
+    }
+  }, [subOrganizationId]);
+
   // Withdrawal state and handlers
   const {
     withdrawAmount,
@@ -93,7 +105,9 @@ export default function Home() {
   } = useWithdrawal(
     baseAddress,
     baseSigner,
-    getSessionKey
+    getSessionKey,
+    httpClient,
+    subOrganizationId
   );
 
   // UI state for Noble actions
@@ -123,9 +137,11 @@ export default function Home() {
       });
       console.log('✅ Whoami response:', whoami);
       console.log('📋 Full object:', JSON.stringify(whoami, null, 2));
-      console.log('🔑 Organization ID from whoami:', whoami.organizationId);
+      console.log('🔑 Parent Organization ID:', process.env.NEXT_PUBLIC_TURNKEY_ORG_ID);
+      console.log('🔑 Sub-Organization ID (from whoami):', subOrganizationId);
+      console.log('🔑 Is Sub-Org:', subOrganizationId !== process.env.NEXT_PUBLIC_TURNKEY_ORG_ID);
       console.log('👤 User object from useTurnkey:', user);
-      console.log('🔑 Organization ID from user:', (user as any)?.organizationId);
+      console.log('📱 Wallet object:', firstWallet);
     } catch (error) {
       console.error('❌ Whoami error:', error);
     }

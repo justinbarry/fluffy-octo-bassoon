@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { TurnkeySigner } from '@turnkey/ethers';
 import { destinations, coinflow } from '@/config';
 import { COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
+import { signEIP712WithTurnkey, parseEIP712TypedData } from '@/utils/turnkeyEIP712';
 
 type WithdrawalSpeed = 'standard' | 'same_day' | 'asap';
 
@@ -28,7 +29,9 @@ interface WithdrawalReturn {
 export function useWithdrawal(
   baseAddress: string,
   baseSigner: TurnkeySigner | null,
-  getSessionKey: () => Promise<string>
+  getSessionKey: () => Promise<string>,
+  turnkeyClient?: any,
+  turnkeyOrganizationId?: string
 ): WithdrawalReturn {
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [withdrawing, setWithdrawing] = useState(false);
@@ -220,6 +223,13 @@ export function useWithdrawal(
       return;
     }
 
+    if (!turnkeyClient || !turnkeyOrganizationId) {
+      setError('Turnkey client not available for gasless signing');
+      return;
+    }
+
+    console.log('🔐 Using Turnkey Organization ID for signing:', turnkeyOrganizationId);
+
     setWithdrawing(true);
     setError('');
     setWithdrawalTxHash('');
@@ -248,10 +258,8 @@ export function useWithdrawal(
       const responseData = await messageResponse.json();
       console.log('✅ EIP-712 response received:', responseData);
 
-      // Parse the stringified EIP-712 typed data
-      const typedData = typeof responseData.message === 'string'
-        ? JSON.parse(responseData.message)
-        : responseData.message;
+      // Parse and validate the EIP-712 typed data
+      const typedData = parseEIP712TypedData(responseData.message);
 
       console.log('📝 Parsed EIP-712 typed data:', {
         domain: typedData.domain,
@@ -261,28 +269,15 @@ export function useWithdrawal(
 
       setStatusMessage('Please sign the permit message...');
 
-      // Call Turnkey's signRawPayload directly with PAYLOAD_ENCODING_EIP712
-      const signResult = await (baseSigner as any).client.signRawPayload({
-        type: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2",
-        organizationId: (baseSigner as any).organizationId,
-        parameters: {
-          signWith: (baseSigner as any).signWith,
-          payload: typedData, // Pass the full EIP-712 object
-          encoding: "PAYLOAD_ENCODING_EIP712",
-          hashFunction: "HASH_FUNCTION_NO_OP",
-        },
-        timestampMs: String(Date.now()),
-      });
+      // Sign the EIP-712 typed data using Turnkey's Raw Digest Method
+      const signature = await signEIP712WithTurnkey(
+        turnkeyClient,
+        turnkeyOrganizationId,
+        baseAddress, // Using baseAddress as the signWith parameter
+        typedData
+      );
 
-      console.log('✅ Turnkey sign result:', signResult);
-
-      // Extract signature from result
-      const { r, s, v } = signResult.activity.result.signRawPayloadResult;
-
-      // Assemble signature in format: 0x + r + s + v
-      const signature = `0x${r}${s}${(parseInt(v) + 27).toString(16).padStart(2, '0')}`;
-
-      console.log('✅ EIP-712 signature assembled:', signature.slice(0, 20) + '...');
+      console.log('✅ EIP-712 signature obtained:', signature.slice(0, 20) + '...');
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
       console.log('📤 Step 3: Submitting gasless transaction with:', {

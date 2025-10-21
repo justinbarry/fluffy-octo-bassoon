@@ -24,6 +24,9 @@ interface WalletClientsReturn {
   xionAddress: string;
   nobleAddress: string;
   baseAddress: string;
+
+  // Organization ID (sub-org ID for signing)
+  subOrganizationId: string;
 }
 
 export function useWalletClients(
@@ -43,6 +46,9 @@ export function useWalletClients(
   const [xionAddress, setXionAddress] = useState<string>('');
   const [nobleAddress, setNobleAddress] = useState<string>('');
   const [baseAddress, setBaseAddress] = useState<string>('');
+
+  // Organization ID
+  const [subOrganizationId, setSubOrganizationId] = useState<string>('');
 
   // Initialize query clients
   useEffect(() => {
@@ -80,6 +86,7 @@ export function useWalletClients(
 
         // Get the actual organization ID (sub-org)
         const actualOrgId = await getOrganizationId(httpClient, rootOrgId);
+        setSubOrganizationId(actualOrgId);
         console.log('🔑 Using organization ID:', actualOrgId);
         console.log('   Root org:', rootOrgId);
         console.log('   Is sub-org:', actualOrgId !== rootOrgId);
@@ -236,5 +243,6 @@ export function useWalletClients(
     xionAddress,
     nobleAddress,
     baseAddress,
+    subOrganizationId,
   };
 }
