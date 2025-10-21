@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Submit the signed permit message to Coinflow for gasless withdrawal
-    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm-gasless`, {
+    const response = await fetch(`${COINFLOW_URL()}/withdraw/evm/transaction`, {
       method: 'POST',
       headers: {
         ...getCoinflowHeaders(sessionKey, wallet),
