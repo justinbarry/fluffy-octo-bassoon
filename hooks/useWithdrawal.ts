@@ -261,7 +261,10 @@ export function useWithdrawal(
           wallet: baseAddress,
           sessionKey: key,
           signature,
-          message: responseData.message // Send the original stringified message
+          message: responseData.message, // Send the original stringified message
+          amount: withdrawAmount,
+          speed: selectedSpeed,
+          bankAccountToken: selectedBankAccount
         })
       });
 

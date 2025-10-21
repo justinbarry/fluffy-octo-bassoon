@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL } from '@/utils/coinflowApi';
+import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL, COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
+import { destinations } from '@/config';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { wallet, sessionKey, signature, message } = body;
+    const { wallet, sessionKey, signature, message, amount, speed, bankAccountToken } = body;
 
     if (!wallet) {
       return createErrorResponse('Wallet address is required');
@@ -25,7 +26,10 @@ export async function POST(request: NextRequest) {
     console.log('Submitting gasless EVM transaction to Coinflow:', {
       wallet,
       hasSignature: !!signature,
-      hasMessage: !!message
+      hasMessage: !!message,
+      amount,
+      speed,
+      bankAccountToken
     });
 
     // Submit the signed permit message to Coinflow for gasless withdrawal
@@ -36,9 +40,18 @@ export async function POST(request: NextRequest) {
         'x-coinflow-auth-blockchain': 'base'
       },
       body: JSON.stringify({
-        signature,
-        message,
-        blockchain: 'base'
+        amount: parseFloat(amount),
+        merchantId: COINFLOW_MERCHANT_ID(),
+        speed,
+        account: bankAccountToken,
+        token: {
+          mint: destinations.base.usdcAddress,
+          decimals: destinations.base.usdcDecimals
+        },
+        evmTransferAuthorizationData: {
+          signature,
+          message
+        }
       })
     });
 
