@@ -245,15 +245,13 @@ export function useWithdrawal(
         throw new Error(error.error || 'Failed to get EIP-712 message');
       }
 
-      const messageData = await messageResponse.json();
+      const responseData = await messageResponse.json();
+      console.log('✅ EIP-712 response received:', responseData);
 
       setStatusMessage('Please sign the permit message...');
-      // Use ethers signTypedData
-      const signature = await baseSigner.signTypedData(
-        messageData.domain,
-        messageData.types,
-        messageData.message
-      );
+      // Sign the raw message string
+      const signature = await baseSigner.signMessage(responseData.message);
+      console.log('✅ Message signed:', signature.slice(0, 20) + '...');
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
       const submitResponse = await fetch('/api/coinflow/gasless-transaction', {
@@ -263,7 +261,7 @@ export function useWithdrawal(
           wallet: baseAddress,
           sessionKey: key,
           signature,
-          message: messageData
+          message: responseData.message // Send the original stringified message
         })
       });
 
