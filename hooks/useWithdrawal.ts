@@ -118,41 +118,70 @@ export function useWithdrawal(
       const txData = await txResponse.json();
       console.log('✅ Withdrawal transaction details:', txData);
 
-      // Validate transaction data
-      if (!txData.address) {
-        throw new Error('Missing destination address in withdrawal transaction');
+      // Parse the transaction from Coinflow's response
+      const rawTx = txData.transactions?.[0];
+      if (!rawTx) {
+        throw new Error('Coinflow did not return a Base transaction to execute.');
       }
-      if (!txData.amount && txData.amount !== 0) {
-        throw new Error('Missing amount in withdrawal transaction');
+
+      const baseTx = typeof rawTx === 'string' ? JSON.parse(rawTx) : rawTx;
+
+      if (!baseTx?.to) {
+        throw new Error('Invalid Base transaction returned from Coinflow. Missing recipient.');
       }
+
+      console.log('📤 Parsed Base transaction:', {
+        to: baseTx.to,
+        value: baseTx.value,
+        data: baseTx.data,
+        gas: baseTx.gas,
+      });
 
       setStatusMessage('Sending USDC transaction on Base...');
-      console.log('📤 Executing USDC transfer:', {
-        usdcContract: destinations.base.usdcAddress,
-        to: txData.address,
-        amount: txData.amount,
-        amountType: typeof txData.amount
-      });
 
-      const hash = await baseWalletClient.writeContract({
-        address: destinations.base.usdcAddress as `0x${string}`,
-        abi: [
-          {
-            name: 'transfer',
-            type: 'function',
-            stateMutability: 'nonpayable',
-            inputs: [
-              { name: 'to', type: 'address' },
-              { name: 'amount', type: 'uint256' }
-            ],
-            outputs: [{ name: '', type: 'bool' }]
-          }
-        ],
-        functionName: 'transfer',
-        args: [txData.address as `0x${string}`, BigInt(txData.amount)],
+      // Helper to safely convert to bigint
+      const toBigIntSafe = (value: any): bigint | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === 'bigint') return value;
+        if (typeof value === 'number') return BigInt(Math.trunc(value));
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return undefined;
+          return BigInt(trimmed);
+        }
+        return undefined;
+      };
+
+      const toNumberSafe = (value: any): number | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string') return parseInt(value);
+        if (typeof value === 'bigint') return Number(value);
+        return undefined;
+      };
+
+      const ensureHex = (value: string) =>
+        value.startsWith('0x') ? (value as `0x${string}`) : (`0x${value}` as `0x${string}`);
+
+      // Build transaction parameters (EIP-1559 vs Legacy)
+      const txParams: any = {
+        to: ensureHex(baseTx.to),
+        data: baseTx.data ? ensureHex(baseTx.data) : undefined,
+        value: toBigIntSafe(baseTx.value),
+        gas: toBigIntSafe(baseTx.gas),
+        nonce: toNumberSafe(baseTx.nonce),
         chain: baseWalletClient.chain,
-        account: baseWalletClient.account!,
-      });
+      };
+
+      // Use EIP-1559 if maxFeePerGas is provided, otherwise use legacy gasPrice
+      if (baseTx.maxFeePerGas) {
+        txParams.maxFeePerGas = toBigIntSafe(baseTx.maxFeePerGas);
+        txParams.maxPriorityFeePerGas = toBigIntSafe(baseTx.maxPriorityFeePerGas);
+      } else if (baseTx.gasPrice) {
+        txParams.gasPrice = toBigIntSafe(baseTx.gasPrice);
+      }
+
+      const hash = await baseWalletClient.sendTransaction(txParams);
 
       setWithdrawalTxHash(hash);
 
