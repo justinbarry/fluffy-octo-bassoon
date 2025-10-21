@@ -258,17 +258,23 @@ export function useWithdrawal(
         hasTypes: !!typedData.types,
         hasPrimaryType: !!typedData.primaryType,
         hasMessage: !!typedData.message,
+        domain: typedData.domain,
       });
 
-      // Remove EIP712Domain from types (ethers v6 handles this automatically)
-      const cleanTypes = { ...typedData.types };
-      delete cleanTypes.EIP712Domain;
-
       setStatusMessage('Please sign the permit message...');
+
+      // For Turnkey + ethers, we need to use types WITHOUT EIP712Domain
+      // TypedDataEncoder will reconstruct it properly
+      const typesWithoutDomain = { ...typedData.types };
+      delete typesWithoutDomain.EIP712Domain;
+
+      console.log('🔏 Signing with types:', Object.keys(typesWithoutDomain));
+
       // Use ethers signTypedData for EIP-712
+      // TurnkeySigner will use PAYLOAD_ENCODING_EIP712 under the hood
       const signature = await baseSigner.signTypedData(
         typedData.domain,
-        cleanTypes, // Use cleaned types without EIP712Domain
+        typesWithoutDomain, // Pass types without EIP712Domain - ethers will handle it
         typedData.message
       );
       console.log('✅ EIP-712 message signed:', signature.slice(0, 20) + '...');
