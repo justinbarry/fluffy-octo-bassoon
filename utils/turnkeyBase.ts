@@ -16,10 +16,13 @@ export async function createTurnkeyBaseClient(
 ): Promise<WalletClient> {
   const chain = network === "mainnet" ? base : baseSepolia;
 
+  // Normalize ethereum address to lowercase (Turnkey requirement)
+  const normalizedAddress = ethereumAddress.toLowerCase();
+
   console.log('🔧 Creating Turnkey Base client with:', {
     organizationId,
     signWith,
-    ethereumAddress,
+    ethereumAddress: normalizedAddress,
     network,
   });
 
@@ -27,7 +30,7 @@ export async function createTurnkeyBaseClient(
     client: turnkeyClient.apiClient(),
     organizationId,
     signWith, // Wallet account ID, private key ID, or uncompressed public key
-    ethereumAddress: ethereumAddress, // Provide the known address
+    ethereumAddress: normalizedAddress, // Provide the known address (lowercase)
   });
 
   const walletClient = createWalletClient({
