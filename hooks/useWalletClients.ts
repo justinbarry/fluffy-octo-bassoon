@@ -193,7 +193,7 @@ export function useWalletClients(
           const baseClient = await createTurnkeyBaseClient(
             { apiClient: () => httpClient } as any,
             actualOrgId,
-            ethereumAccount.walletAccountId,
+            signWith, // Use the SAME uncompressed public key as Cosmos chains
             ethereumAccount.address,
             network as 'mainnet' | 'sepolia'
           );
