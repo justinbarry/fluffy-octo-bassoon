@@ -254,6 +254,13 @@ export function useWithdrawal(
       console.log('✅ Message signed:', signature.slice(0, 20) + '...');
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
+      console.log('📤 Step 3: Submitting gasless transaction with:', {
+        amount: withdrawAmount,
+        speed: selectedSpeed,
+        bankAccount: selectedBankAccount,
+        hasSignature: !!signature,
+      });
+
       const submitResponse = await fetch('/api/coinflow/gasless-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
