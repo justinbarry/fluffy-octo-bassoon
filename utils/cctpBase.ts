@@ -6,6 +6,8 @@ import {
   parseAbi,
   type Hash,
 } from "viem";
+import { TurnkeySigner } from "@turnkey/ethers";
+import { ethers } from "ethers";
 import { destinations } from "@/config";
 import { getBaseChain } from "./turnkeyBase";
 
@@ -182,6 +184,49 @@ export async function getBaseGasPrice(
   } catch (error) {
     console.error("Error fetching gas price:", error);
     return BigInt(0);
+  }
+}
+
+/**
+ * Mint USDC on Base using CCTP with Turnkey ethers signer
+ */
+export async function mintUSDCOnBaseWithEthers(
+  signer: TurnkeySigner,
+  message: Uint8Array,
+  attestation: string,
+  network: "mainnet" | "sepolia" = "sepolia"
+): Promise<string> {
+  const messageTransmitterAddress = destinations.base.cctp.messageTransmitter;
+
+  console.log("Minting USDC on Base via CCTP with ethers...");
+  console.log("Message Transmitter:", messageTransmitterAddress);
+  console.log("Message length:", message.length);
+  console.log("Attestation length:", attestation.length);
+
+  try {
+    // Message Transmitter ABI
+    const abi = [
+      "function receiveMessage(bytes calldata message, bytes calldata attestation) external returns (bool)"
+    ];
+
+    const contract = new ethers.Contract(messageTransmitterAddress, abi, signer);
+
+    // Convert to hex strings
+    const messageHex = `0x${Buffer.from(message).toString("hex")}`;
+    const attestationHex = attestation.startsWith("0x") ? attestation : `0x${attestation}`;
+
+    // Call receiveMessage
+    const tx = await contract.receiveMessage(messageHex, attestationHex);
+    console.log("CCTP mint transaction sent:", tx.hash);
+
+    // Wait for confirmation
+    await tx.wait();
+    console.log("CCTP mint transaction confirmed");
+
+    return tx.hash;
+  } catch (error) {
+    console.error("Error minting USDC on Base:", error);
+    throw error;
   }
 }
 

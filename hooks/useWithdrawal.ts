@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type WalletClient } from 'viem';
+import { TurnkeySigner } from '@turnkey/ethers';
 import { destinations, coinflow } from '@/config';
 import { COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
 
@@ -27,7 +27,7 @@ interface WithdrawalReturn {
 
 export function useWithdrawal(
   baseAddress: string,
-  baseWalletClient: WalletClient | null,
+  baseSigner: TurnkeySigner | null,
   getSessionKey: () => Promise<string>
 ): WithdrawalReturn {
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
@@ -85,7 +85,7 @@ export function useWithdrawal(
 
   // Handle regular withdrawal (with gas)
   const handleWithdraw = async () => {
-    if (!baseAddress || !baseWalletClient || !withdrawAmount || !selectedBankAccount) {
+    if (!baseAddress || !baseSigner || !withdrawAmount || !selectedBankAccount) {
       setError('Missing required withdrawal parameters');
       return;
     }
@@ -126,31 +126,7 @@ export function useWithdrawal(
 
       console.log(`📤 Processing ${transactions.length} transaction(s) from Coinflow`);
 
-      // Helper functions
-      const toBigIntSafe = (value: any): bigint | undefined => {
-        if (value === undefined || value === null) return undefined;
-        if (typeof value === 'bigint') return value;
-        if (typeof value === 'number') return BigInt(Math.trunc(value));
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          if (!trimmed) return undefined;
-          return BigInt(trimmed);
-        }
-        return undefined;
-      };
-
-      const toNumberSafe = (value: any): number | undefined => {
-        if (value === undefined || value === null) return undefined;
-        if (typeof value === 'number') return value;
-        if (typeof value === 'string') return parseInt(value);
-        if (typeof value === 'bigint') return Number(value);
-        return undefined;
-      };
-
-      const ensureHex = (value: string) =>
-        value.startsWith('0x') ? (value as `0x${string}`) : (`0x${value}` as `0x${string}`);
-
-      // Execute all transactions sequentially
+      // Execute all transactions sequentially using ethers
       const hashes: string[] = [];
       for (let i = 0; i < transactions.length; i++) {
         const rawTx = transactions[i];
@@ -169,32 +145,36 @@ export function useWithdrawal(
 
         setStatusMessage(`Sending transaction ${i + 1}/${transactions.length} on Base...`);
 
-        // Build transaction parameters
-        const txParams: any = {
-          to: ensureHex(baseTx.to),
-          data: baseTx.data ? ensureHex(baseTx.data) : undefined,
-          value: toBigIntSafe(baseTx.value),
-          gas: toBigIntSafe(baseTx.gas || baseTx.gasLimit), // Handle both 'gas' and 'gasLimit'
-          nonce: toNumberSafe(baseTx.nonce),
-          chain: baseWalletClient.chain,
+        // Build ethers transaction request
+        const txRequest: any = {
+          to: baseTx.to,
+          data: baseTx.data || '0x',
+          value: baseTx.value || 0,
+          gasLimit: baseTx.gas || baseTx.gasLimit,
         };
+
+        // Add nonce if provided
+        if (baseTx.nonce !== undefined && baseTx.nonce !== null) {
+          txRequest.nonce = parseInt(baseTx.nonce);
+        }
 
         // Use EIP-1559 if maxFeePerGas is provided, otherwise use legacy gasPrice
         if (baseTx.maxFeePerGas) {
-          txParams.maxFeePerGas = toBigIntSafe(baseTx.maxFeePerGas);
-          txParams.maxPriorityFeePerGas = toBigIntSafe(baseTx.maxPriorityFeePerGas);
+          txRequest.maxFeePerGas = baseTx.maxFeePerGas;
+          txRequest.maxPriorityFeePerGas = baseTx.maxPriorityFeePerGas;
         } else if (baseTx.gasPrice) {
-          txParams.gasPrice = toBigIntSafe(baseTx.gasPrice);
+          txRequest.gasPrice = baseTx.gasPrice;
         }
 
-        const hash = await baseWalletClient.sendTransaction(txParams);
-        console.log(`✅ Transaction ${i + 1} sent:`, hash);
-        hashes.push(hash);
+        const tx = await baseSigner.sendTransaction(txRequest);
+        console.log(`✅ Transaction ${i + 1} sent:`, tx.hash);
+        hashes.push(tx.hash);
 
-        // Wait a moment before sending next transaction to ensure proper nonce ordering
+        // Wait for transaction to be mined before sending next one
         if (i < transactions.length - 1) {
-          console.log(`⏳ Waiting for transaction ${i + 1} to propagate...`);
-          await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+          console.log(`⏳ Waiting for transaction ${i + 1} to confirm...`);
+          await tx.wait();
+          console.log(`✅ Transaction ${i + 1} confirmed`);
         }
       }
 
@@ -235,7 +215,7 @@ export function useWithdrawal(
 
   // Handle gasless withdrawal using EIP-712 permit signing
   const handleWithdrawGasless = async () => {
-    if (!baseAddress || !baseWalletClient || !withdrawAmount || !selectedBankAccount) {
+    if (!baseAddress || !baseSigner || !withdrawAmount || !selectedBankAccount) {
       setError('Missing required withdrawal parameters');
       return;
     }
@@ -268,13 +248,12 @@ export function useWithdrawal(
       const messageData = await messageResponse.json();
 
       setStatusMessage('Please sign the permit message...');
-      const signature = await baseWalletClient.signTypedData({
-        account: baseWalletClient.account!,
-        domain: messageData.domain,
-        types: messageData.types,
-        primaryType: messageData.primaryType,
-        message: messageData.message,
-      });
+      // Use ethers signTypedData
+      const signature = await baseSigner.signTypedData(
+        messageData.domain,
+        messageData.types,
+        messageData.message
+      );
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
       const submitResponse = await fetch('/api/coinflow/gasless-transaction', {

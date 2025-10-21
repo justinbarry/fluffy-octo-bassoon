@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { type WalletClient } from 'viem';
+import { TurnkeySigner } from '@turnkey/ethers';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { SigningStargateClient, GasPrice, defaultRegistryTypes } from '@cosmjs/stargate';
 import { Registry } from '@cosmjs/proto-signing';
 import { TurnkeyDirectWallet } from '@turnkey/cosmjs';
 import { sources, bridge } from '@/config';
 import { convertXionToNoble } from '@/utils/addressConversion';
-import { createTurnkeyBaseClient } from '@/utils/turnkeyBase';
+import { createTurnkeyBaseSigner } from '@/utils/turnkeyBase';
 import { getOrganizationId } from '@/utils/turnkeyWallet';
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 
@@ -18,7 +18,7 @@ interface WalletClientsReturn {
   // Signing clients
   xionSigningClient: SigningStargateClient | null;
   nobleSigningClient: SigningStargateClient | null;
-  baseWalletClient: WalletClient | null;
+  baseSigner: TurnkeySigner | null;
 
   // Addresses
   xionAddress: string;
@@ -37,7 +37,7 @@ export function useWalletClients(
   // Signing clients
   const [xionSigningClient, setXionSigningClient] = useState<SigningStargateClient | null>(null);
   const [nobleSigningClient, setNobleSigningClient] = useState<SigningStargateClient | null>(null);
-  const [baseWalletClient, setBaseWalletClient] = useState<WalletClient | null>(null);
+  const [baseSigner, setBaseSigner] = useState<TurnkeySigner | null>(null);
 
   // Addresses
   const [xionAddress, setXionAddress] = useState<string>('');
@@ -68,7 +68,7 @@ export function useWalletClients(
       if (!httpClient || !firstWallet?.accounts?.[0]) {
         setXionSigningClient(null);
         setNobleSigningClient(null);
-        setBaseWalletClient(null);
+        setBaseSigner(null);
         setXionAddress('');
         setNobleAddress('');
         setBaseAddress('');
@@ -186,23 +186,23 @@ export function useWalletClients(
         );
         setNobleSigningClient(nobleClient);
 
-        // Initialize Base wallet with Turnkey using the Ethereum account
+        // Initialize Base signer with Turnkey using ethers
         try {
-          console.log('🔧 Initializing Base wallet...');
+          console.log('🔧 Initializing Base signer with ethers...');
           const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
-          const baseClient = await createTurnkeyBaseClient(
-            { apiClient: () => httpClient } as any,
+          const signer = await createTurnkeyBaseSigner(
+            httpClient,
             actualOrgId,
             signWith, // Use the SAME uncompressed public key as Cosmos chains
-            ethereumAccount.address,
             network as 'mainnet' | 'sepolia'
           );
 
-          setBaseAddress(ethereumAccount.address);
-          setBaseWalletClient(baseClient);
-          console.log('✅ Base wallet client created');
+          const address = await signer.getAddress();
+          setBaseAddress(address);
+          setBaseSigner(signer);
+          console.log('✅ Base ethers signer created');
         } catch (error) {
-          console.error('❌ Failed to create Base wallet:', error);
+          console.error('❌ Failed to create Base signer:', error);
           throw error;
         }
 
@@ -216,7 +216,7 @@ export function useWalletClients(
         console.error('Failed to initialize signing clients:', error);
         setXionSigningClient(null);
         setNobleSigningClient(null);
-        setBaseWalletClient(null);
+        setBaseSigner(null);
       }
     };
 
@@ -228,7 +228,7 @@ export function useWalletClients(
     nobleQueryClient,
     xionSigningClient,
     nobleSigningClient,
-    baseWalletClient,
+    baseSigner,
     xionAddress,
     nobleAddress,
     baseAddress,

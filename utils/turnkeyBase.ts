@@ -1,72 +1,58 @@
-import { createAccount } from "@turnkey/viem";
-import { type TurnkeyApiClient } from "@turnkey/sdk-server";
-import { createWalletClient, http, type WalletClient } from "viem";
+import { TurnkeyClient } from "@turnkey/http";
+import { TurnkeySigner } from "@turnkey/ethers";
+import { ethers } from "ethers";
 import { base, baseSepolia } from "viem/chains";
 import { destinations } from "@/config";
 
 /**
- * Create a viem wallet client with Turnkey signer for Base
+ * Create an ethers signer with Turnkey for Base
  */
-export async function createTurnkeyBaseClient(
-  turnkeyClient: { apiClient: () => TurnkeyApiClient },
+export async function createTurnkeyBaseSigner(
+  turnkeyClient: TurnkeyClient,
   organizationId: string,
-  signWith: string, // Can be: wallet account ID, private key ID, or uncompressed public key
-  ethereumAddress: string,
+  signWith: string, // Wallet account ID, private key ID, or uncompressed public key
   network: "mainnet" | "sepolia" = "sepolia"
-): Promise<WalletClient> {
-  const chain = network === "mainnet" ? base : baseSepolia;
+): Promise<TurnkeySigner> {
+  const rpcUrl = destinations.base.rpcUrl;
 
-  // Normalize ethereum address to lowercase (Turnkey requirement)
-  const normalizedAddress = ethereumAddress.toLowerCase();
+  console.log('🔧 Creating Turnkey Base signer with:', {
+    organizationId,
+    signWith: signWith.slice(0, 20) + '...',
+    network,
+    rpcUrl,
+  });
 
-  console.log('🔧 Creating Turnkey Base client with:', {
+  // Create ethers provider
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+  // Create Turnkey signer
+  const signer = new TurnkeySigner({
+    client: turnkeyClient,
     organizationId,
     signWith,
-    ethereumAddress: normalizedAddress,
+  });
+
+  // Connect signer to provider
+  const connectedSigner = signer.connect(provider);
+
+  const address = await connectedSigner.getAddress();
+  console.log('✅ Turnkey ethers signer created:', {
+    address,
     network,
   });
 
-  const turnkeyAccount = await createAccount({
-    client: turnkeyClient.apiClient(),
-    organizationId,
-    signWith, // Wallet account ID, private key ID, or uncompressed public key
-    ethereumAddress: normalizedAddress, // Provide the known address (lowercase)
-  });
-
-  const walletClient = createWalletClient({
-    account: turnkeyAccount,
-    chain,
-    transport: http(destinations.base.rpcUrl),
-  });
-
-  console.log('✅ Turnkey account created:', {
-    address: turnkeyAccount.address,
-    type: turnkeyAccount.type,
-  });
-
-  return walletClient;
+  return connectedSigner;
 }
 
 /**
- * Derive the Base (Ethereum) address from a Turnkey wallet
+ * Get the chain ID based on the current network
  */
-export async function deriveBaseAddress(
-  turnkeyClient: { apiClient: () => TurnkeyApiClient },
-  organizationId: string,
-  privateKeyId: string
-): Promise<string> {
-  const turnkeyAccount = await createAccount({
-    client: turnkeyClient.apiClient(),
-    organizationId,
-    signWith: privateKeyId,
-    ethereumAddress: "", // Will be derived
-  });
-
-  return turnkeyAccount.address;
+export function getBaseChainId(network: "mainnet" | "sepolia" = "sepolia"): number {
+  return destinations.base.chainId;
 }
 
 /**
- * Get the chain configuration based on the current network
+ * Get the viem chain configuration (for viem-based utilities)
  */
 export function getBaseChain(network: "mainnet" | "sepolia" = "sepolia") {
   return network === "mainnet" ? base : baseSepolia;

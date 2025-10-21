@@ -28,7 +28,7 @@ export default function Home() {
     nobleQueryClient,
     xionSigningClient,
     nobleSigningClient,
-    baseWalletClient,
+    baseSigner,
     xionAddress,
     nobleAddress,
     baseAddress,
@@ -63,7 +63,7 @@ export default function Home() {
     baseAddress,
     xionSigningClient,
     nobleSigningClient,
-    baseWalletClient,
+    baseSigner,
     nobleQueryClient
   );
 
@@ -92,7 +92,7 @@ export default function Home() {
     setQuote,
   } = useWithdrawal(
     baseAddress,
-    baseWalletClient,
+    baseSigner,
     getSessionKey
   );
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type WalletClient } from 'viem';
+import { TurnkeySigner } from '@turnkey/ethers';
 import { SigningStargateClient } from '@cosmjs/stargate';
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
@@ -7,7 +7,7 @@ import { Buffer } from 'buffer';
 import { sources, bridge, destinations } from '@/config';
 import { burnUSDCOnNoble } from '@/utils/cctpNoble';
 import { getAttestationSignature, normalizeAttestation, normalizeMessageBytes } from '@/utils/cctp';
-import { mintUSDCOnBaseWithTurnkey, formatAddressForCCTP } from '@/utils/cctpBase';
+import { mintUSDCOnBaseWithEthers, formatAddressForCCTP } from '@/utils/cctpBase';
 
 type CCTPStep = 'idle' | 'ibc' | 'burn' | 'attest' | 'mint' | 'complete';
 
@@ -38,7 +38,7 @@ export function useCCTPTransfer(
   baseAddress: string,
   xionSigningClient: SigningStargateClient | null,
   nobleSigningClient: SigningStargateClient | null,
-  baseWalletClient: WalletClient | null,
+  baseSigner: TurnkeySigner | null,
   nobleQueryClient: CosmWasmClient | null
 ): CCTPTransferReturn {
   const [cctpStep, setCctpStep] = useState<CCTPStep>('idle');
@@ -171,13 +171,13 @@ export function useCCTPTransfer(
       setCctpStep('mint');
       setStatusMessage('Minting USDC on Base...');
 
-      if (!baseWalletClient) {
-        throw new Error('Base wallet client not initialized');
+      if (!baseSigner) {
+        throw new Error('Base signer not initialized');
       }
 
       const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
-      const mintTxHash = await mintUSDCOnBaseWithTurnkey(
-        baseWalletClient,
+      const mintTxHash = await mintUSDCOnBaseWithEthers(
+        baseSigner,
         new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
         attestationHex,
         network as 'mainnet' | 'sepolia'
@@ -277,7 +277,7 @@ export function useCCTPTransfer(
 
   // CCTP Burn Noble → Base
   const burnNobleToBase = async (inputAmount?: string) => {
-    if (!nobleAddress || !baseAddress || !nobleSigningClient || !baseWalletClient) {
+    if (!nobleAddress || !baseAddress || !nobleSigningClient || !baseSigner) {
       setError('Noble or Base signing client not available');
       return;
     }
@@ -342,8 +342,8 @@ export function useCCTPTransfer(
       setStatusMessage('Minting USDC on Base...');
 
       const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
-      const mintTxHash = await mintUSDCOnBaseWithTurnkey(
-        baseWalletClient,
+      const mintTxHash = await mintUSDCOnBaseWithEthers(
+        baseSigner,
         new Uint8Array(Buffer.from(messageHex.slice(2), 'hex')),
         attestationHex,
         network as 'mainnet' | 'sepolia'
