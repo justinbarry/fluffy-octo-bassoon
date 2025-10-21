@@ -1,4 +1,4 @@
-import { COINFLOW_API } from '@/config/api';
+import { coinflow } from '@/config';
 import { NextResponse } from 'next/server';
 
 export const createErrorResponse = (message: string, status: number = 400) => {
@@ -14,17 +14,11 @@ export const handleApiError = (error: unknown, customMessage?: string) => {
 };
 
 export const COINFLOW_URL = () => {
-  const env = process.env.COINFLOW_ENV || process.env.NEXT_PUBLIC_COINFLOW_ENV || 'testnet';
-  return (env === 'mainnet')
-    ? COINFLOW_API.MAINNET_URL
-    : COINFLOW_API.SANDBOX_URL;
+  return coinflow.apiUrl;
 };
 
 export const COINFLOW_MERCHANT_ID = () => {
-  const env = process.env.COINFLOW_ENV || process.env.NEXT_PUBLIC_COINFLOW_ENV || 'testnet';
-  return (env === 'mainnet')
-    ? COINFLOW_API.MAINNET_MERCHANT_ID
-    : COINFLOW_API.MERCHANT_ID;
+  return coinflow.merchantId;
 };
 
 export const getCoinflowHeaders = (sessionKey?: string | null, walletAddress?: string) => {

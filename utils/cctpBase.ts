@@ -6,7 +6,7 @@ import {
   parseAbi,
   type Hash,
 } from "viem";
-import { BASE_RPC_URL, BASE_USDC_ADDRESS, BASE_CCTP_CONTRACTS, BASE_CONFIG } from "@/config/api";
+import { destinations } from "@/config";
 import { getBaseChain } from "./turnkeyBase";
 
 // ERC-20 ABI (minimal - just what we need)
@@ -32,12 +32,12 @@ export async function getBaseUSDCBalance(
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(BASE_RPC_URL),
+    transport: http(destinations.base.rpcUrl),
   });
 
   try {
     const balance = await publicClient.readContract({
-      address: BASE_USDC_ADDRESS as `0x${string}`,
+      address: destinations.base.usdcAddress as `0x${string}`,
       abi: ERC20_ABI,
       functionName: "balanceOf",
       args: [address as `0x${string}`],
@@ -61,7 +61,7 @@ export async function mintUSDCOnBaseWithTurnkey(
   network: "mainnet" | "sepolia" = "sepolia"
 ): Promise<Hash> {
   const chain = getBaseChain(network);
-  const messageTransmitterAddress = BASE_CCTP_CONTRACTS.MESSAGE_TRANSMITTER;
+  const messageTransmitterAddress = destinations.base.cctp.messageTransmitter;
 
   console.log("Minting USDC on Base via CCTP...");
   console.log("Message Transmitter:", messageTransmitterAddress);
@@ -106,7 +106,7 @@ export async function waitForBaseTransaction(
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(BASE_RPC_URL),
+    transport: http(destinations.base.rpcUrl),
   });
 
   try {
@@ -134,7 +134,7 @@ export async function estimateMintGas(
   network: "mainnet" | "sepolia" = "sepolia"
 ): Promise<bigint> {
   const chain = getBaseChain(network);
-  const messageTransmitterAddress = BASE_CCTP_CONTRACTS.MESSAGE_TRANSMITTER;
+  const messageTransmitterAddress = destinations.base.cctp.messageTransmitter;
   const messageHex = `0x${Buffer.from(message).toString("hex")}` as `0x${string}`;
   const attestationHex = attestation.startsWith("0x")
     ? (attestation as `0x${string}`)
@@ -144,7 +144,7 @@ export async function estimateMintGas(
     // Create a public client for gas estimation
     const publicClient = createPublicClient({
       chain,
-      transport: http(BASE_RPC_URL),
+      transport: http(destinations.base.rpcUrl),
     });
 
     const gas = await publicClient.estimateContractGas({
@@ -173,7 +173,7 @@ export async function getBaseGasPrice(
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(BASE_RPC_URL),
+    transport: http(destinations.base.rpcUrl),
   });
 
   try {

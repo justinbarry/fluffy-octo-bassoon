@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse, handleApiError, getCoinflowHeaders, COINFLOW_URL, COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
-import { BASE_USDC_ADDRESS, BASE_CONFIG } from '@/config/api';
+import { destinations } from '@/config';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       bankAccountToken,
       speed,
       merchantId: COINFLOW_MERCHANT_ID(),
-      usdcAddress: BASE_USDC_ADDRESS
+      usdcAddress: destinations.base.usdcAddress
     });
 
     // Get withdrawal transaction details from Coinflow
@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
         speed,
         account: bankAccountToken,
         token: {
-          mint: BASE_USDC_ADDRESS,
-          decimals: BASE_CONFIG.USDC_DECIMALS
+          mint: destinations.base.usdcAddress,
+          decimals: destinations.base.usdcDecimals
         }
       })
     });

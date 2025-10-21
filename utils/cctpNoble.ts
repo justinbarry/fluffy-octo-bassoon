@@ -6,7 +6,7 @@
 import { EncodeObject } from '@cosmjs/proto-signing';
 import { SigningStargateClient } from '@cosmjs/stargate';
 import { Buffer } from 'buffer';
-import { NOBLE_CONFIG } from '@/config/api';
+import { bridge } from '@/config';
 import { CCTPBurnResult } from '@/types/cctp';
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 
@@ -74,7 +74,7 @@ export async function burnUSDCOnNoble(
           amount: amount,
           destinationDomain: destinationDomain,
           mintRecipient: mintRecipientBytes,
-          burnToken: NOBLE_CONFIG.USDC_DENOM,
+          burnToken: bridge.usdcDenom,
           destinationCaller: destinationCallerBytes,
         }),
       }
@@ -86,7 +86,7 @@ export async function burnUSDCOnNoble(
           amount: amount,
           destinationDomain: destinationDomain,
           mintRecipient: mintRecipientBytes,
-          burnToken: NOBLE_CONFIG.USDC_DENOM,
+          burnToken: bridge.usdcDenom,
         }),
       };
 
@@ -97,7 +97,7 @@ export async function burnUSDCOnNoble(
     destinationDomain: destinationDomain,
     mintRecipientLength: mintRecipientBytes.length,
     hasDestinationCaller: !!destinationCallerBytes,
-    burnToken: NOBLE_CONFIG.USDC_DENOM
+    burnToken: bridge.usdcDenom
   });
 
   try {

@@ -20,6 +20,7 @@ export function createCoinflowWalletAdapter(walletClient: WalletClient | null, a
         gas: transaction.gas ? BigInt(transaction.gas) : undefined,
         gasPrice: transaction.gasPrice ? BigInt(transaction.gasPrice) : undefined,
         account: walletClient.account!,
+        chain: walletClient.chain,
       });
 
       return { hash };

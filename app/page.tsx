@@ -11,17 +11,7 @@ import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { TurnkeyDirectWallet } from '@turnkey/cosmjs';
 import { Buffer } from 'buffer';
 
-import {
-  XION_RPC_URL,
-  XION_REST_URL,
-  NOBLE_RPC_URL,
-  BASE_RPC_URL,
-  COINFLOW_API,
-  COINFLOW_BASE_URL,
-  NOBLE_CONFIG,
-  BASE_CONFIG,
-  BASE_USDC_ADDRESS,
-} from '@/config/api';
+import { sources, bridge, destinations, coinflow, cctp } from '@/config';
 import { COINFLOW_MERCHANT_ID } from '@/utils/coinflowApi';
 import { convertXionToNoble } from '@/utils/addressConversion';
 
@@ -31,11 +21,6 @@ import { mintUSDCOnBaseWithTurnkey, getBaseUSDCBalance, formatAddressForCCTP } f
 import { createTurnkeyBaseClient, deriveBaseAddress } from '@/utils/turnkeyBase';
 import { MsgDepositForBurn, MsgDepositForBurnWithCaller } from '@/proto/circle/cctp/v1/tx';
 import { getOrganizationId } from '@/utils/turnkeyWallet';
-
-// USDC denom on Xion
-const USDC_DENOM = process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
-  ? 'ibc/F082B65C88E4B6D5EF1DB243CDA1D331D002759E938A0F5CD3FFDC5D53B3E349'
-  : 'ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4';
 
 type CCTPStep = 'idle' | 'ibc' | 'burn' | 'attest' | 'mint' | 'complete';
 
@@ -102,10 +87,10 @@ export default function Home() {
   useEffect(() => {
     const initQueryClients = async () => {
       try {
-        const xionClient = await CosmWasmClient.connect(XION_RPC_URL);
+        const xionClient = await CosmWasmClient.connect(sources.xion.rpcUrl);
         setXionQueryClient(xionClient);
 
-        const nobleClient = await CosmWasmClient.connect(NOBLE_RPC_URL);
+        const nobleClient = await CosmWasmClient.connect(bridge.rpcUrl);
         setNobleQueryClient(nobleClient);
 
         console.log('✅ Query clients initialized');
@@ -208,7 +193,7 @@ export default function Home() {
 
         // Connect Xion client
         const xionClient = await SigningStargateClient.connectWithSigner(
-          XION_RPC_URL,
+          sources.xion.rpcUrl,
           xionWallet,
           { gasPrice: GasPrice.fromString('0.001uxion') }
         );
@@ -231,7 +216,7 @@ export default function Home() {
         ] as Iterable<[string, any]>);
 
         const nobleClient = await SigningStargateClient.connectWithSigner(
-          NOBLE_RPC_URL,
+          bridge.rpcUrl,
           nobleWallet,
           {
             gasPrice: GasPrice.fromString('0.025uusdc'),
@@ -283,7 +268,7 @@ export default function Home() {
       if (!xionAddress || !xionQueryClient) return;
 
       try {
-        const balance = await xionQueryClient.getBalance(xionAddress, USDC_DENOM);
+        const balance = await xionQueryClient.getBalance(xionAddress, sources.xion.usdcDenom);
         setXionUsdcBalance((parseInt(balance.amount) / 1000000).toFixed(2));
       } catch (error) {
         console.error('Error fetching Xion balance:', error);
@@ -396,7 +381,7 @@ export default function Home() {
       console.log('🎯 Base CCTP destination:', {
         wallet: baseAddress,
         addressBytes: baseAddressHex,
-        domain: BASE_CONFIG.CCTP_DOMAIN
+        domain: destinations.base.cctpDomain
       });
 
       // Reserve gas fee from actual Noble balance
@@ -418,7 +403,7 @@ export default function Home() {
         nobleSigningClient!,
         nobleAddress,
         burnAmountFromNoble.toString(),
-        BASE_CONFIG.CCTP_DOMAIN, // Domain 6 for Base
+        destinations.base.cctpDomain,
         baseAddressHex, // Base address (padded to 32 bytes)
         undefined // No relayer needed - we'll mint manually
       );
@@ -483,11 +468,9 @@ export default function Home() {
       typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
       value: MsgTransfer.fromPartial({
         sourcePort: 'transfer',
-        sourceChannel: process.env.NEXT_PUBLIC_COINFLOW_ENV === 'mainnet'
-          ? 'channel-2'
-          : 'channel-3',
+        sourceChannel: sources.xion.ibcChannel,
         token: {
-          denom: USDC_DENOM,
+          denom: sources.xion.usdcDenom,
           amount: `${parseInt(amount) * 1000000}`,
         },
         sender: xionAddress,
@@ -637,7 +620,7 @@ export default function Home() {
       console.log('🎯 Base CCTP destination:', {
         wallet: baseAddress,
         addressBytes: baseAddressHex,
-        domain: BASE_CONFIG.CCTP_DOMAIN
+        domain: destinations.base.cctpDomain
       });
 
       // Query fresh Noble balance before burning
@@ -679,7 +662,7 @@ export default function Home() {
         nobleSigningClient,
         nobleAddress,
         burnAmountString,
-        BASE_CONFIG.CCTP_DOMAIN, // Domain 6 for Base
+        destinations.base.cctpDomain,
         baseAddressHex, // Base address (padded to 32 bytes)
         undefined // No relayer - we'll mint manually
       );
@@ -888,7 +871,7 @@ export default function Home() {
 
       const params = new URLSearchParams({
         amount: amount,
-        token: BASE_USDC_ADDRESS,
+        token: destinations.base.usdcAddress,
         wallet: baseAddress,
         merchantId: COINFLOW_MERCHANT_ID(),
         usePermit: 'false'
@@ -959,13 +942,13 @@ export default function Home() {
       // Step 2: Execute USDC transfer on Base
       setStatusMessage('Sending USDC transaction on Base...');
       console.log('📤 Step 2: Executing USDC transfer on Base');
-      console.log('   USDC Contract:', BASE_USDC_ADDRESS);
+      console.log('   USDC Contract:', destinations.base.usdcAddress);
       console.log('   To:', txData.address);
       console.log('   Amount (in smallest unit):', txData.amount);
 
       // Transfer USDC using ERC-20 transfer method
       const hash = await baseWalletClient.writeContract({
-        address: BASE_USDC_ADDRESS as `0x${string}`,
+        address: destinations.base.usdcAddress as `0x${string}`,
         abi: [
           {
             name: 'transfer',
@@ -1136,7 +1119,7 @@ export default function Home() {
 
     try {
       const key = await getSessionKey();
-      const baseUrl = `${COINFLOW_BASE_URL}/base/withdraw/${COINFLOW_MERCHANT_ID()}`;
+      const baseUrl = `${coinflow.baseUrl}/base/withdraw/${COINFLOW_MERCHANT_ID()}`;
       const url = new URL(baseUrl);
       url.searchParams.set('sessionKey', key);
       url.searchParams.set('bankAccountLinkRedirect', window.location.origin);

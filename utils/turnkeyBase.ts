@@ -2,7 +2,7 @@ import { createAccount } from "@turnkey/viem";
 import { type TurnkeyApiClient } from "@turnkey/sdk-server";
 import { createWalletClient, http, type WalletClient } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { BASE_CHAIN_ID, BASE_RPC_URL } from "@/config/api";
+import { destinations } from "@/config";
 
 /**
  * Create a viem wallet client with Turnkey signer for Base
@@ -33,7 +33,7 @@ export async function createTurnkeyBaseClient(
   const walletClient = createWalletClient({
     account: turnkeyAccount,
     chain,
-    transport: http(BASE_RPC_URL),
+    transport: http(destinations.base.rpcUrl),
   });
 
   console.log('✅ Turnkey account created:', {

@@ -4,7 +4,7 @@
  */
 
 import { Buffer } from 'buffer';
-import { ATTESTATION_API_URL, NOBLE_CONFIG } from '@/config/api';
+import { bridge, cctp } from '@/config';
 import { CCTPAttestationResponse } from '@/types/cctp';
 
 function decodeBase64(base64: string): Uint8Array {
@@ -94,9 +94,9 @@ export async function getAttestationSignature(
   maxAttempts: number = 40,
   pollInterval: number = 3000
 ): Promise<{ attestation: string; message?: string }> {
-  const sourceDomain = NOBLE_CONFIG.CCTP_DOMAIN;
+  const sourceDomain = bridge.cctpDomain;
   // CCTP v1 endpoint format: /v1/messages/{sourceDomain}/{transactionHash}
-  const url = `${ATTESTATION_API_URL}/v1/messages/${sourceDomain}/${transactionHash}`;
+  const url = `${cctp.attestationApiUrl}/v1/messages/${sourceDomain}/${transactionHash}`;
 
   console.log('🔍 Attestation API URL:', url);
 
