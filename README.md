@@ -1,12 +1,12 @@
-# Xion → Noble → Solana CCTP + Coinflow Withdrawal Demo
+# Xion → Noble → Base CCTP + Coinflow Withdrawal Demo
 
-A comprehensive demo showcasing Cross-Chain Transfer Protocol (CCTP) for bridging USDC from Xion to Solana via Noble, with integrated Coinflow bank withdrawal functionality.
+A comprehensive demo showcasing Cross-Chain Transfer Protocol (CCTP) for bridging USDC from Xion to Base via Noble, with integrated Coinflow bank withdrawal functionality.
 
 ## 🌉 Architecture Overview
 
 ```
 ┌─────────┐     IBC      ┌───────┐    CCTP Burn    ┌─────────┐
-│  Xion   │ ────────────>│ Noble │ ────────────────>│ Solana  │
+│  Xion   │ ────────────>│ Noble │ ────────────────>│  Base   │
 │  USDC   │              │  USDC │                  │  USDC   │
 └─────────┘              └───────┘                  └─────────┘
                                                            │
@@ -21,14 +21,13 @@ A comprehensive demo showcasing Cross-Chain Transfer Protocol (CCTP) for bridgin
 
 ## ✨ Features
 
-- **Multi-Chain CCTP Bridge**: Transfer USDC from Xion → Noble → Solana
-- **Dual Wallet Integration**:
-  - Turnkey for Xion/Noble (Cosmos chains)
-  - Solana Wallet Adapter (Phantom, Solflare, etc.)
+- **Multi-Chain CCTP Bridge**: Transfer USDC from Xion → Noble → Base
+- **Turnkey Wallet Integration**: Passkey-based wallets for Xion, Noble, and Base
 - **Circle CCTP Integration**: Native burn-and-mint USDC transfers
-- **Coinflow Widget**: Pre-built UI for bank withdrawals on Solana
+- **Coinflow Widget**: Pre-built UI for bank withdrawals on Base
 - **Real-time Progress Tracking**: Step-by-step visual feedback
 - **Error Handling**: Comprehensive error messages and recovery
+- **Gasless Withdrawals**: Support for EIP-712 permit signatures
 
 ## 🚀 Getting Started
 
@@ -44,7 +43,7 @@ A comprehensive demo showcasing Cross-Chain Transfer Protocol (CCTP) for bridgin
 1. Clone the repository:
 ```bash
 git clone <repo-url>
-cd xion-solana-coinflow-demo-cc
+cd xion-base-coinflow-demo
 ```
 
 2. Install dependencies:
@@ -62,7 +61,7 @@ Edit `.env.local`:
 NEXT_PUBLIC_COINFLOW_ENV=sandbox
 NEXT_PUBLIC_COINFLOW_MERCHANT_ID=your_merchant_id
 NEXT_PUBLIC_TURNKEY_ORG_ID=your_turnkey_org_id
-NEXT_PUBLIC_SOLANA_NETWORK=devnet
+NEXT_PUBLIC_BASE_NETWORK=sepolia
 ```
 
 4. Run the development server:
@@ -82,22 +81,23 @@ npm run dev
 ### Step 2: CCTP Burn on Noble
 - Burns USDC on Noble using CCTP module
 - Generates burn message and nonce
-- Message includes Solana destination
+- Message includes Base destination address
 
 ### Step 3: Circle Attestation
 - Poll Circle's Iris API for attestation
 - Typically takes 2-3 minutes
 - Attestation authorizes mint on destination
 
-### Step 4: CCTP Mint on Solana
-- Submit message + attestation to Solana CCTP program
-- USDC minted to user's Solana wallet
-- Transaction signed with Solana wallet
+### Step 4: CCTP Mint on Base
+- Submit message + attestation to Base CCTP MessageTransmitter contract
+- USDC minted to user's Base wallet
+- Transaction signed with Turnkey EVM wallet
 
 ### Step 5: Coinflow Withdrawal
 - Coinflow widget appears after successful mint
 - User can withdraw USDC to linked bank account
 - Choose speed: Standard (2-3 days), Same Day, or ASAP
+- Supports gasless withdrawals via EIP-712 permit signatures
 
 ## 🔧 Technical Stack
 
@@ -109,57 +109,75 @@ npm run dev
 
 ### Blockchain Integration
 - **@cosmjs/stargate**: Cosmos chain interactions (Xion/Noble)
-- **@solana/web3.js**: Solana blockchain interaction
-- **@solana/wallet-adapter**: Multi-wallet support
-- **@turnkey/react-wallet-kit**: Passkey-based Cosmos wallets
+- **@turnkey/react-wallet-kit**: Passkey-based multi-chain wallets
+- **@turnkey/ethers**: Turnkey integration with ethers.js
+- **ethers.js v6**: Ethereum library for Base interactions
+- **viem**: Modern TypeScript EVM library
 
 ### CCTP
 - Noble CCTP Module (MsgDepositForBurn)
 - Circle Iris API (attestation service)
-- Solana CCTP Program (MessageTransmitter)
+- Base CCTP MessageTransmitter Contract
 
 ## 📁 Project Structure
 
 ```
 ├── app/
 │   ├── layout.tsx          # Root layout with providers
-│   ├── page.tsx             # Main CCTP flow UI
-│   ├── providers.tsx        # Wallet providers setup
-│   └── globals.css          # Global styles
+│   ├── page.tsx            # Main CCTP flow UI
+│   ├── providers.tsx       # Wallet providers setup
+│   ├── globals.css         # Global styles
+│   └── api/coinflow/       # Coinflow API routes
 ├── config/
-│   └── api.ts              # Chain configs (Xion, Noble, Solana)
+│   ├── index.ts            # Chain configs (Xion, Noble, Base)
+│   ├── networks/           # Network-specific configs
+│   └── services/           # Service configs (Coinflow, CCTP)
 ├── types/
 │   └── cctp.ts             # TypeScript types
 ├── utils/
+│   ├── conversions.ts      # Amount & address conversions
+│   ├── constants.ts        # Gas fees & timeouts
+│   ├── apiHelpers.ts       # API validation & request builders
+│   ├── ibc.ts              # IBC message builders
 │   ├── cctp.ts             # Attestation fetching
 │   ├── cctpNoble.ts        # Noble burn functions
-│   └── cctpSolana.ts       # Solana mint functions
-├── proto/
-│   └── circle/             # Noble CCTP protobuf types
-└── components/              # (to be created)
+│   ├── cctpBase.ts         # Base mint functions
+│   ├── turnkeyBase.ts      # Turnkey Base integration
+│   ├── turnkeyEIP712.ts    # EIP-712 signing with Turnkey
+│   └── coinflowApi.ts      # Coinflow API helpers
+├── hooks/
+│   ├── useWalletClients.ts # Wallet client initialization
+│   ├── useBalances.ts      # Balance polling
+│   ├── useCCTPTransfer.ts  # CCTP transfer orchestration
+│   ├── useCoinflowSession.ts # Coinflow session management
+│   └── useWithdrawal.ts    # Withdrawal operations
+├── components/             # React UI components
+└── proto/                  # Noble CCTP protobuf types
 ```
 
 ## 🐛 Troubleshooting
 
 ### Wallet Connection Issues
 - **Turnkey**: Ensure TURNKEY_ORG_ID is correctly set
-- **Solana**: Install Phantom or Solflare browser extension
+- **Passkey**: Clear browser cache if authentication fails
 
 ### CCTP Transfer Failures
 - **Noble Burn**: Check USDC balance on Noble
 - **Attestation Timeout**: Circle API may be slow, wait up to 5 minutes
-- **Solana Mint**: Ensure sufficient SOL for gas fees
+- **Base Mint**: Ensure Turnkey wallet has ETH for gas fees on Base
 
 ### Coinflow Issues
-- **Widget Not Showing**: Verify USDC arrived on Solana
+- **Widget Not Showing**: Verify USDC arrived on Base
 - **Bank Linking**: Use Coinflow's sandbox environment for testing
+- **Gasless Withdrawal**: Ensure EIP-712 signatures are working correctly
 
 ## 📚 Resources
 
 - [Circle CCTP Docs](https://developers.circle.com/stablecoins/docs/cctp-getting-started)
-- [Solana CCTP Contracts](https://github.com/circlefin/solana-cctp-contracts)
-- [Coinflow Documentation](https://integration-builder.coinflow.cash)
+- [Base CCTP Contracts](https://developers.circle.com/stablecoins/docs/cctp-technical-reference)
+- [Coinflow Documentation](https://docs.coinflow.cash)
 - [Turnkey Docs](https://docs.turnkey.com)
+- [Base Network](https://base.org)
 
 ## 🔐 Security Considerations
 
@@ -167,6 +185,7 @@ npm run dev
 - API keys should be server-side only
 - Turnkey provides passkey-based security (no seed phrases)
 - Coinflow handles PII securely in their widget
+- EIP-712 signatures are validated on-chain
 
 ## 📝 License
 

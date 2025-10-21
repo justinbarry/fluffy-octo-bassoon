@@ -4,6 +4,8 @@
  */
 
 /**
+ * DEPRECATED: Solana wallet creation - no longer used (migrated to Base)
+ *
  * Get or create a Solana wallet in Turnkey sub-organization
  *
  * This function calls a server-side API route that:
@@ -16,7 +18,9 @@
  *
  * @param subOrgId - Sub-organization ID (where wallets live)
  * @returns Solana address (base58 format)
+ * @deprecated Use Base/EVM wallets via Turnkey instead
  */
+/*
 export async function getOrCreateSolanaWallet(
   subOrgId: string
 ): Promise<string> {
@@ -44,6 +48,7 @@ export async function getOrCreateSolanaWallet(
     throw new Error(`Failed to get or create Solana account: ${error}`);
   }
 }
+*/
 
 /**
  * Get organization ID from httpClient using whoami

@@ -38,7 +38,7 @@ export interface CCTPMintResult {
   success: boolean;
 }
 
-export type DestinationChain = 'noble' | 'solana';
+export type DestinationChain = 'noble' | 'base';
 
 export interface WithdrawalDestination {
   chain: DestinationChain;
@@ -47,15 +47,9 @@ export interface WithdrawalDestination {
   gasCost: string;
 }
 
-// Solana-specific types
-export interface SolanaCCTPMintParams {
+// Base-specific types
+export interface BaseCCTPMintParams {
   messageBytes: Buffer;
   attestation: Buffer;
   recipientAddress: string;
-}
-
-export interface SolanaAccountMeta {
-  pubkey: string;
-  isSigner: boolean;
-  isWritable: boolean;
 }

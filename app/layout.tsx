@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Xion → Solana CCTP + Coinflow Demo",
-  description: "Bridge USDC from Xion to Solana via Noble CCTP and withdraw with Coinflow",
+  title: "Xion → Base CCTP + Coinflow Demo",
+  description: "Bridge USDC from Xion to Base via Noble CCTP and withdraw with Coinflow",
 };
 
 export default function RootLayout({
