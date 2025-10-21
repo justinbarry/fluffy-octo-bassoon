@@ -13,6 +13,8 @@ interface WithdrawalReturn {
   selectedSpeed: WithdrawalSpeed;
   quote: any;
   gettingQuote: boolean;
+  error: string;
+  statusMessage: string;
   setWithdrawAmount: (amount: string) => void;
   setSelectedBankAccount: (token: string) => void;
   setSelectedSpeed: (speed: WithdrawalSpeed) => void;
@@ -26,9 +28,7 @@ interface WithdrawalReturn {
 export function useWithdrawal(
   baseAddress: string,
   baseWalletClient: WalletClient | null,
-  getSessionKey: () => Promise<string>,
-  setError: (error: string) => void,
-  setStatusMessage: (message: string) => void
+  getSessionKey: () => Promise<string>
 ): WithdrawalReturn {
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [withdrawing, setWithdrawing] = useState(false);
@@ -37,6 +37,8 @@ export function useWithdrawal(
   const [selectedSpeed, setSelectedSpeed] = useState<WithdrawalSpeed>('standard');
   const [quote, setQuote] = useState<any>(null);
   const [gettingQuote, setGettingQuote] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   // Get withdrawal quote from Coinflow
   const getQuote = async (amount: string) => {
@@ -283,6 +285,8 @@ export function useWithdrawal(
     selectedSpeed,
     quote,
     gettingQuote,
+    error,
+    statusMessage,
     setWithdrawAmount,
     setSelectedBankAccount,
     setSelectedSpeed,

@@ -80,6 +80,8 @@ export default function Home() {
     selectedSpeed,
     quote,
     gettingQuote,
+    error: withdrawalError,
+    statusMessage: withdrawalStatus,
     setWithdrawAmount,
     setSelectedBankAccount,
     setSelectedSpeed,
@@ -91,9 +93,7 @@ export default function Home() {
   } = useWithdrawal(
     baseAddress,
     baseWalletClient,
-    getSessionKey,
-    (error: string) => {}, // Error handling done in hook
-    setStatusMessage
+    getSessionKey
   );
 
   // UI state for Noble actions
@@ -193,6 +193,8 @@ export default function Home() {
           selectedSpeed={selectedSpeed}
           quote={quote}
           gettingQuote={gettingQuote}
+          error={withdrawalError}
+          statusMessage={withdrawalStatus}
           onWithdrawAmountChange={async (value) => {
             setWithdrawAmount(value);
             if (value && parseFloat(value) > 0) {

@@ -1,5 +1,6 @@
 import { BankAccountSelector } from './BankAccountSelector';
 import { WithdrawalSpeedSelector } from './WithdrawalSpeedSelector';
+import { StatusMessage } from '../shared/StatusMessage';
 
 type WithdrawalSpeed = 'standard' | 'same_day' | 'asap';
 
@@ -15,6 +16,8 @@ interface CoinflowWithdrawalProps {
   selectedSpeed: WithdrawalSpeed;
   quote: any;
   gettingQuote: boolean;
+  error?: string;
+  statusMessage?: string;
   onWithdrawAmountChange: (value: string) => Promise<void>;
   onBankAccountChange: (token: string) => void;
   onSpeedChange: (speed: WithdrawalSpeed) => void;
@@ -36,6 +39,8 @@ export function CoinflowWithdrawal({
   selectedSpeed,
   quote,
   gettingQuote,
+  error,
+  statusMessage,
   onWithdrawAmountChange,
   onBankAccountChange,
   onSpeedChange,
@@ -53,6 +58,9 @@ export function CoinflowWithdrawal({
         {cctpStep === 'complete' && 'USDC has been successfully bridged to Base via CCTP!'}
         {cctpStep !== 'complete' && `You have $${baseUsdcBalance.toFixed(2)} USDC on Base.`}
       </p>
+
+      {/* Status & Error Messages */}
+      <StatusMessage message={statusMessage} error={error} />
 
       {/* Show bank accounts if available */}
       {withdrawerDetails?.withdrawer?.bankAccounts?.length > 0 ? (
