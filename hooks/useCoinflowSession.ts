@@ -4,7 +4,7 @@ interface CoinflowSessionReturn {
   sessionKey: string | null;
   withdrawerDetails: any;
   getSessionKey: () => Promise<string>;
-  loadWithdrawerDetails: () => Promise<void>;
+  loadWithdrawerDetails: () => Promise<any>;
 }
 
 export function useCoinflowSession(baseAddress: string): CoinflowSessionReturn {
@@ -119,8 +119,12 @@ export function useCoinflowSession(baseAddress: string): CoinflowSessionReturn {
       const data = await response.json();
       setWithdrawerDetails(data);
       console.log('✅ Withdrawer details loaded:', data);
+
+      // Return data so caller can access bank accounts
+      return data;
     } catch (err: any) {
       console.error('❌ Failed to load withdrawer details:', err);
+      throw err;
     }
   };
 

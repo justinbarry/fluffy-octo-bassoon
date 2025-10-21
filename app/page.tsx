@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTurnkey } from '@turnkey/react-wallet-kit';
 
 // Custom Hooks
@@ -99,6 +99,15 @@ export default function Home() {
   // UI state for Noble actions
   const [nobleToXionAmount, setNobleToXionAmount] = useState<string>('');
   const [nobleToBaseAmount, setNobleToBaseAmount] = useState<string>('');
+
+  // Auto-select first bank account when withdrawer details are loaded
+  useEffect(() => {
+    if (withdrawerDetails?.withdrawer?.bankAccounts?.length > 0 && !selectedBankAccount) {
+      const firstBankAccount = withdrawerDetails.withdrawer.bankAccounts[0].token;
+      setSelectedBankAccount(firstBankAccount);
+      console.log('✅ Auto-selected bank account:', withdrawerDetails.withdrawer.bankAccounts[0].name || firstBankAccount);
+    }
+  }, [withdrawerDetails, selectedBankAccount, setSelectedBankAccount]);
 
   // Debug: Call Turnkey whoami endpoint
   const debugWhoAmI = async () => {
