@@ -254,30 +254,35 @@ export function useWithdrawal(
         : responseData.message;
 
       console.log('📝 Parsed EIP-712 typed data:', {
-        hasDomain: !!typedData.domain,
-        hasTypes: !!typedData.types,
-        hasPrimaryType: !!typedData.primaryType,
-        hasMessage: !!typedData.message,
         domain: typedData.domain,
+        types: Object.keys(typedData.types),
+        primaryType: typedData.primaryType,
       });
 
       setStatusMessage('Please sign the permit message...');
 
-      // For Turnkey + ethers, we need to use types WITHOUT EIP712Domain
-      // TypedDataEncoder will reconstruct it properly
-      const typesWithoutDomain = { ...typedData.types };
-      delete typesWithoutDomain.EIP712Domain;
+      // Call Turnkey's signRawPayload directly with PAYLOAD_ENCODING_EIP712
+      const signResult = await (baseSigner as any).client.signRawPayload({
+        type: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2",
+        organizationId: (baseSigner as any).organizationId,
+        parameters: {
+          signWith: (baseSigner as any).signWith,
+          payload: typedData, // Pass the full EIP-712 object
+          encoding: "PAYLOAD_ENCODING_EIP712",
+          hashFunction: "HASH_FUNCTION_NO_OP",
+        },
+        timestampMs: String(Date.now()),
+      });
 
-      console.log('🔏 Signing with types:', Object.keys(typesWithoutDomain));
+      console.log('✅ Turnkey sign result:', signResult);
 
-      // Use ethers signTypedData for EIP-712
-      // TurnkeySigner will use PAYLOAD_ENCODING_EIP712 under the hood
-      const signature = await baseSigner.signTypedData(
-        typedData.domain,
-        typesWithoutDomain, // Pass types without EIP712Domain - ethers will handle it
-        typedData.message
-      );
-      console.log('✅ EIP-712 message signed:', signature.slice(0, 20) + '...');
+      // Extract signature from result
+      const { r, s, v } = signResult.activity.result.signRawPayloadResult;
+
+      // Assemble signature in format: 0x + r + s + v
+      const signature = `0x${r}${s}${(parseInt(v) + 27).toString(16).padStart(2, '0')}`;
+
+      console.log('✅ EIP-712 signature assembled:', signature.slice(0, 20) + '...');
 
       setStatusMessage('Submitting gasless transaction to Coinflow...');
       console.log('📤 Step 3: Submitting gasless transaction with:', {
