@@ -190,10 +190,13 @@ export function useWalletClients(
         try {
           console.log('🔧 Initializing Base signer with ethers...');
           const network = process.env.NEXT_PUBLIC_BASE_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia';
+
+          // For TurnkeySigner, use the wallet account ID (not the uncompressed public key)
+          // TurnkeySigner needs either an Ethereum address or a private key ID
           const signer = await createTurnkeyBaseSigner(
             httpClient,
             actualOrgId,
-            signWith, // Use the SAME uncompressed public key as Cosmos chains
+            ethereumAccount.walletAccountId, // Use wallet account ID for ethers
             network as 'mainnet' | 'sepolia'
           );
 
