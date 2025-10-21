@@ -173,11 +173,12 @@ npm run dev
 
 ## 📚 Resources
 
-- [Circle CCTP Docs](https://developers.circle.com/stablecoins/docs/cctp-getting-started)
-- [Base CCTP Contracts](https://developers.circle.com/stablecoins/docs/cctp-technical-reference)
+- [Circle CCTPv1 Documentation](https://developers.circle.com/stablecoins/docs/cctp-protocol-contract)
+- [Circle CCTPv1 Attestation API](https://developers.circle.com/stablecoins/docs/cctp-attestation-service)
+- [Noble CCTP Integration](https://docs.nobleassets.xyz/cctp)
+- [Base Network Documentation](https://docs.base.org)
 - [Coinflow Documentation](https://docs.coinflow.cash)
 - [Turnkey Docs](https://docs.turnkey.com)
-- [Base Network](https://base.org)
 
 ## 🔐 Security Considerations
 
