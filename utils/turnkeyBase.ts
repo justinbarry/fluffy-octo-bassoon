@@ -18,6 +18,7 @@ export async function createTurnkeyBaseSigner(
   console.log('🔧 Creating Turnkey Base signer with:', {
     organizationId,
     signWith: signWith.slice(0, 20) + '...',
+    signWithFull: signWith,
     network,
     rpcUrl,
   });
@@ -26,6 +27,13 @@ export async function createTurnkeyBaseSigner(
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   // Create Turnkey signer
+  console.log('Creating TurnkeySigner with:', {
+    hasClient: !!turnkeyClient,
+    clientType: turnkeyClient?.constructor?.name,
+    organizationId,
+    signWith,
+  });
+
   const signer = new TurnkeySigner({
     client: turnkeyClient,
     organizationId,
