@@ -118,28 +118,15 @@ export function useWithdrawal(
       const txData = await txResponse.json();
       console.log('✅ Withdrawal transaction details:', txData);
 
-      // Parse the transaction from Coinflow's response
-      const rawTx = txData.transactions?.[0];
-      if (!rawTx) {
-        throw new Error('Coinflow did not return a Base transaction to execute.');
+      // Parse ALL transactions from Coinflow's response (usually 2: approval + withdrawal)
+      const transactions = txData.transactions || [];
+      if (transactions.length === 0) {
+        throw new Error('Coinflow did not return any transactions to execute.');
       }
 
-      const baseTx = typeof rawTx === 'string' ? JSON.parse(rawTx) : rawTx;
+      console.log(`📤 Processing ${transactions.length} transaction(s) from Coinflow`);
 
-      if (!baseTx?.to) {
-        throw new Error('Invalid Base transaction returned from Coinflow. Missing recipient.');
-      }
-
-      console.log('📤 Parsed Base transaction:', {
-        to: baseTx.to,
-        value: baseTx.value,
-        data: baseTx.data,
-        gas: baseTx.gas,
-      });
-
-      setStatusMessage('Sending USDC transaction on Base...');
-
-      // Helper to safely convert to bigint
+      // Helper functions
       const toBigIntSafe = (value: any): bigint | undefined => {
         if (value === undefined || value === null) return undefined;
         if (typeof value === 'bigint') return value;
@@ -163,27 +150,56 @@ export function useWithdrawal(
       const ensureHex = (value: string) =>
         value.startsWith('0x') ? (value as `0x${string}`) : (`0x${value}` as `0x${string}`);
 
-      // Build transaction parameters (EIP-1559 vs Legacy)
-      const txParams: any = {
-        to: ensureHex(baseTx.to),
-        data: baseTx.data ? ensureHex(baseTx.data) : undefined,
-        value: toBigIntSafe(baseTx.value),
-        gas: toBigIntSafe(baseTx.gas),
-        nonce: toNumberSafe(baseTx.nonce),
-        chain: baseWalletClient.chain,
-      };
+      // Execute all transactions sequentially
+      const hashes: string[] = [];
+      for (let i = 0; i < transactions.length; i++) {
+        const rawTx = transactions[i];
+        const baseTx = typeof rawTx === 'string' ? JSON.parse(rawTx) : rawTx;
 
-      // Use EIP-1559 if maxFeePerGas is provided, otherwise use legacy gasPrice
-      if (baseTx.maxFeePerGas) {
-        txParams.maxFeePerGas = toBigIntSafe(baseTx.maxFeePerGas);
-        txParams.maxPriorityFeePerGas = toBigIntSafe(baseTx.maxPriorityFeePerGas);
-      } else if (baseTx.gasPrice) {
-        txParams.gasPrice = toBigIntSafe(baseTx.gasPrice);
+        if (!baseTx?.to) {
+          throw new Error(`Transaction ${i + 1} is missing recipient address`);
+        }
+
+        console.log(`📤 Sending transaction ${i + 1}/${transactions.length}:`, {
+          to: baseTx.to,
+          value: baseTx.value,
+          data: baseTx.data?.slice(0, 20) + '...',
+          gas: baseTx.gas || baseTx.gasLimit,
+        });
+
+        setStatusMessage(`Sending transaction ${i + 1}/${transactions.length} on Base...`);
+
+        // Build transaction parameters
+        const txParams: any = {
+          to: ensureHex(baseTx.to),
+          data: baseTx.data ? ensureHex(baseTx.data) : undefined,
+          value: toBigIntSafe(baseTx.value),
+          gas: toBigIntSafe(baseTx.gas || baseTx.gasLimit), // Handle both 'gas' and 'gasLimit'
+          nonce: toNumberSafe(baseTx.nonce),
+          chain: baseWalletClient.chain,
+        };
+
+        // Use EIP-1559 if maxFeePerGas is provided, otherwise use legacy gasPrice
+        if (baseTx.maxFeePerGas) {
+          txParams.maxFeePerGas = toBigIntSafe(baseTx.maxFeePerGas);
+          txParams.maxPriorityFeePerGas = toBigIntSafe(baseTx.maxPriorityFeePerGas);
+        } else if (baseTx.gasPrice) {
+          txParams.gasPrice = toBigIntSafe(baseTx.gasPrice);
+        }
+
+        const hash = await baseWalletClient.sendTransaction(txParams);
+        console.log(`✅ Transaction ${i + 1} sent:`, hash);
+        hashes.push(hash);
+
+        // Wait a moment before sending next transaction to ensure proper nonce ordering
+        if (i < transactions.length - 1) {
+          console.log(`⏳ Waiting for transaction ${i + 1} to propagate...`);
+          await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+        }
       }
 
-      const hash = await baseWalletClient.sendTransaction(txParams);
-
-      setWithdrawalTxHash(hash);
+      const finalHash = hashes[hashes.length - 1]; // Use last transaction hash as the main one
+      setWithdrawalTxHash(finalHash);
 
       setStatusMessage('Submitting transaction to Coinflow...');
       const submitResponse = await fetch('/api/coinflow/submit-hash', {
@@ -192,7 +208,7 @@ export function useWithdrawal(
         body: JSON.stringify({
           wallet: baseAddress,
           sessionKey: key,
-          hash
+          hash: finalHash
         })
       });
 
