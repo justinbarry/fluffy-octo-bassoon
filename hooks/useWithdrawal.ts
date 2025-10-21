@@ -260,11 +260,15 @@ export function useWithdrawal(
         hasMessage: !!typedData.message,
       });
 
+      // Remove EIP712Domain from types (ethers v6 handles this automatically)
+      const cleanTypes = { ...typedData.types };
+      delete cleanTypes.EIP712Domain;
+
       setStatusMessage('Please sign the permit message...');
       // Use ethers signTypedData for EIP-712
       const signature = await baseSigner.signTypedData(
         typedData.domain,
-        typedData.types,
+        cleanTypes, // Use cleaned types without EIP712Domain
         typedData.message
       );
       console.log('✅ EIP-712 message signed:', signature.slice(0, 20) + '...');
